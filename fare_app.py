@@ -165,7 +165,7 @@ if uploaded_files:
                         if id_s in price_lookup and id_l in price_lookup:
                             p_s, p_l = df[df['Match_ID'] == id_s]['New_SDR'].iloc[0], df[df['Match_ID'] == id_l]['New_SDR'].iloc[0]
                             if p_s - p_l > 0.01:
-                                lb_gaps.append({"Journey": f"{start_st} to...", "Destination (near)": near_st, "Cheaper than (far)": far_st, "By": round(p_s - p_l, 2)})
+                                lb_gaps.append({"Journey": f"{start_st} to...", "Destination (near)": near_st, "Higher than (far)": far_st, "By": round(p_s - p_l, 2)})
         if lb_gaps:
             st.dataframe(pd.DataFrame(lb_gaps).sort_values('By', ascending=False).head(10), 
                          column_config={"By": st.column_config.NumberColumn("By", format="£%.2f")},
