@@ -146,10 +146,22 @@ if uploaded_files:
                     if id_ab in price_lookup and id_bc in price_lookup:
                         split_p = df[df['Match_ID'] == id_ab]['New_SDR'].iloc[0] + df[df['Match_ID'] == id_bc]['New_SDR'].iloc[0]
                         if thru_p - split_p > 0.01:
-                            split_gaps.append({"Journey": f"{A} to {C}", "New Fare": thru_p, "Split Fare": split_p, "Difference": round(thru_p - split_p, 2)})
+                            # Added "Split At": B here
+                            split_gaps.append({
+                                "Journey": f"{A} to {C}", 
+                                "Split At": B, 
+                                "New Fare": thru_p, 
+                                "Split Fare": split_p, 
+                                "Difference": round(thru_p - split_p, 2)
+                            })
         if split_gaps:
+            # Added "Split At" to the list of displayed columns
             st.dataframe(pd.DataFrame(split_gaps).sort_values('Difference', ascending=False).head(10), 
-                         column_config={"New Fare": st.column_config.NumberColumn("New Fare", format="£%.2f"), "Split Fare": st.column_config.NumberColumn("Split Fare", format="£%.2f"), "Difference": st.column_config.NumberColumn("Difference", format="£%.2f")},
+                         column_config={
+                             "New Fare": st.column_config.NumberColumn("New Fare", format="£%.2f"), 
+                             "Split Fare": st.column_config.NumberColumn("Split Fare", format="£%.2f"), 
+                             "Difference": st.column_config.NumberColumn("Difference", format="£%.2f")
+                         },
                          use_container_width=True, hide_index=True)
         else:
             st.success("No split-ticket opportunities remaining")
