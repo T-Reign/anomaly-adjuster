@@ -45,7 +45,7 @@ st.sidebar.header("2. Long-Buy Exclusions")
 raw_lb_ex = st.sidebar.text_area("Flows to exclude from adjustment:", value="ALDERSHOT-OXSHOTT")
 excluded_longbuys = {line.strip().upper().replace(" ", "") for line in raw_lb_ex.split('\n') if "-" in line}
 
-st.sidebar.header("3. Optimization Settings")
+st.sidebar.header("3. Optimisation Settings")
 inc_cap = st.sidebar.slider("Maximum Increase (cap) (%)", 0, 70, 8) / 100
 dec_cap = st.sidebar.slider("Maximum Decrease (cap) (%)", 0, 70, 5) / 100
 sdr_rounding = st.sidebar.select_slider("Rounding (£)", options=[0.00, 0.05, 0.10, 0.20, 0.50, 1.00], value=0.20)
@@ -112,9 +112,9 @@ if uploaded_files:
     r1c1, r1c2 = st.columns(2)
     
     with r1c1:
-        st.subheader("Top 10 Optimization Increases")
+        st.subheader("Top 10 Price Increases")
         st.dataframe(df.sort_values('Opt_Increase', ascending=False).head(10)[['Origin Description', 'Destination Description', 'Base_Price', 'New_SDR', 'Opt_Increase']], 
-                     column_config={"Base_Price": st.column_config.NumberColumn("Levelled", format="£%.2f"), "New_SDR": st.column_config.NumberColumn("Final", format="£%.2f"), "Opt_Increase": st.column_config.NumberColumn("Hike", format="£%.2f")}, 
+                     column_config={"Base_Price": st.column_config.NumberColumn("Base Fare", format="£%.2f"), "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f"), "Opt_Increase": st.column_config.NumberColumn("Increase", format="£%.2f")}, 
                      use_container_width=True, hide_index=True)
     
     with r1c2:
@@ -124,9 +124,9 @@ if uploaded_files:
         decreases_display['Diff'] = decreases_display['Diff'].abs()
         st.dataframe(decreases_display[['Origin Description', 'Destination Description', 'Original_SDR', 'New_SDR', 'Diff']], 
                      column_config={
-                         "Original_SDR": st.column_config.NumberColumn("Orig", format="£%.2f"), 
-                         "New_SDR": st.column_config.NumberColumn("Final", format="£%.2f"), 
-                         "Diff": st.column_config.NumberColumn("Drop", format="£%.2f")
+                         "Original_SDR": st.column_config.NumberColumn("Base Fare", format="£%.2f"), 
+                         "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f"), 
+                         "Diff": st.column_config.NumberColumn("Decrease", format="£%.2f")
                      }, 
                      use_container_width=True, hide_index=True)
 
@@ -146,10 +146,10 @@ if uploaded_files:
                     if id_ab in price_lookup and id_bc in price_lookup:
                         split_p = df[df['Match_ID'] == id_ab]['New_SDR'].iloc[0] + df[df['Match_ID'] == id_bc]['New_SDR'].iloc[0]
                         if thru_p - split_p > 0.01:
-                            split_gaps.append({"Journey": f"{A} to {C}", "Thru": thru_p, "Split": split_p, "Gap": round(thru_p - split_p, 2)})
+                            split_gaps.append({"Journey": f"{A} to {C}", "New Fare": thru_p, "Split Fare": split_p, "Difference": round(thru_p - split_p, 2)})
         if split_gaps:
             st.dataframe(pd.DataFrame(split_gaps).sort_values('Gap', ascending=False).head(10), 
-                         column_config={"Thru": st.column_config.NumberColumn("Thru", format="£%.2f"), "Split": st.column_config.NumberColumn("Split", format="£%.2f"), "Gap": st.column_config.NumberColumn("Gap", format="£%.2f")},
+                         column_config={"New Fare": st.column_config.NumberColumn("New Fare", format="£%.2f"), "Split Fare": st.column_config.NumberColumn("Split Fare", format="£%.2f"), "Difference": st.column_config.NumberColumn("Gap", format="£%.2f")},
                          use_container_width=True, hide_index=True)
         else:
             st.success("No split-ticket opportunities remaining")
@@ -176,6 +176,6 @@ if uploaded_files:
     st.divider()
     st.subheader("Full Summary")
     st.dataframe(df[['Origin Description', 'Destination Description', 'Original_SDR', 'New_SDR', 'Status']], 
-                 column_config={"Original_SDR": st.column_config.NumberColumn("Orig", format="£%.2f"), "New_SDR": st.column_config.NumberColumn("Final", format="£%.2f")},
+                 column_config={"Original_SDR": st.column_config.NumberColumn("Base Fare", format="£%.2f"), "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f")},
                  use_container_width=True, hide_index=True)
     st.download_button("Download Unified CSV", df.to_csv(index=False), "v14_4_final.csv")
