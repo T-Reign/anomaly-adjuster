@@ -190,4 +190,4 @@ if uploaded_files:
     st.dataframe(df[['Origin Description', 'Destination Description', 'Original_SDR', 'New_SDR', 'Status']], 
                  column_config={"Original_SDR": st.column_config.NumberColumn("Base Fare", format="£%.2f"), "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f")},
                  use_container_width=True, hide_index=True)
-    st.download_button("Download Unified CSV", df.to_csv(index=False), "v14_4_final.csv")
+    st.download_button("Sample Quartz Fares CSV", df.to_csv(index=False), "Final_Quartz_Fares.csv")
