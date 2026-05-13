@@ -22,7 +22,7 @@ with col_logo:
 
 with col_text:
     st.title("Anomaly Adjuster")
-    st.caption("Final Optimized Build: Smart Rounding & Clean Formatting")
+    st.caption("Prototype adjuster for Oval fares (part 2)")
 
 # --- 1. SEQUENCES ---
 SEQUENCES = {
