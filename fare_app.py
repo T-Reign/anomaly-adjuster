@@ -45,6 +45,14 @@ def round_up(x, base):
     return round(rounded_up, 2)
 
 # --- 2. SIDEBAR ---
+st.sidebar.header("1. Split-Ticket Exclusions")
+raw_split_ex = st.sidebar.text_area("Flows to exclude from adjustment:", value="READING-EARLEY")
+excluded_splits = {line.strip().upper().replace(" ", "") for line in raw_split_ex.split('\n') if "-" in line}
+
+st.sidebar.header("2. Long-Buy Exclusions")
+raw_lb_ex = st.sidebar.text_area("Flows to exclude from adjustment:", value="ALDERSHOT-OXSHOTT")
+excluded_longbuys = {line.strip().upper().replace(" ", "") for line in raw_lb_ex.split('\n') if "-" in line}
+
 st.sidebar.header("1. Settings")
 inc_cap = st.sidebar.slider("Maximum Increase (cap) (%)", 0, 70, 8) / 100
 dec_cap = st.sidebar.slider("Maximum Decrease (cap) (%)", 0, 70, 5) / 100
