@@ -22,9 +22,10 @@ with col_logo:
 
 with col_text:
     st.title("Anomaly Adjuster")
-    st.caption("Prototype adjuster for Oval fares (part 2)")
+    st.caption("Final Build: Proper Case, Strict Rounding & Turbo Speed")
 
 # --- 1. SEQUENCES ---
+# Paste your 20+ routes here.
 SEQUENCES = {
     "Reading-Aldershot": ["READING", "EARLEY", "WINNERSH TRIANGLE", "WINNERSH", "WOKINGHAM", "BRACKNELL", "MARTINS HERON", "ASCOT", "BAGSHOT", "CAMBERLEY", "FRIMLEY", "ASH VALE", "ALDERSHOT", "FARNHAM", "BENTLEY", "ALTON"],
     "Ascot-Ashtead": ["ASCOT", "BAGSHOT", "CAMBERLEY", "FRIMLEY", "ASH VALE", "ALDERSHOT", "ASH", "WANBOROUGH", "GUILDFORD", "LONDON ROAD (GUILDFORD)", "CLANDON", "HORSLEY", "EFFINGHAM JUNCTION", "BOOKHAM", "LEATHERHEAD", "ASHTEAD"],
@@ -37,11 +38,11 @@ SEQUENCES = {
     "Ash-Chertsey": ["ASH", "WANBOROUGH", "GUILDFORD", "WORPLESDON", "WOKING", "WEST BYFLEET", "BYFLEET & NEW HAW", "WEYBRIDGE", "ADDLESTONE", "CHERTSEY"]
 }
 
-def smart_round(x, base):
+# Your preferred logic: Always rounds UP (e.g., 30.01 -> 30.20)
+def round_up(x, base):
     if pd.isna(x) or x == 0: return 0
-    if base == 0: return round(float(x), 2)
-    # This rounds to the nearest base (e.g., 30.12 becomes 30.20 if base is 0.2)
-    return round(round(float(x) / base) * base, 2)
+    if base <= 0.01: return round(float(x), 2)
+    return math.ceil(round(float(x), 2) * (1/base)) / (1/base)
 
 # --- 2. SIDEBAR ---
 st.sidebar.header("1. Split-Ticket Exclusions")
@@ -55,18 +56,18 @@ excluded_longbuys = {line.strip().upper().replace(" ", "") for line in raw_lb_ex
 st.sidebar.header("3. Optimisation Settings")
 inc_cap = st.sidebar.slider("Maximum Increase (cap) (%)", 0, 70, 8) / 100
 dec_cap = st.sidebar.slider("Maximum Decrease (cap) (%)", 0, 70, 5) / 100
-sdr_rounding = st.sidebar.select_slider("Rounding (£)", options=[0.00, 0.05, 0.10, 0.20, 0.50, 1.00], value=0.20)
+sdr_rounding = st.sidebar.select_slider("Rounding (£)", options=[0.01, 0.05, 0.10, 0.20, 0.50, 1.00], value=0.20)
 
 uploaded_files = st.sidebar.file_uploader("Upload Fare Spreadsheets", type=["xlsx"], accept_multiple_files=True)
 
 # --- 3. PROCESSING ---
 if uploaded_files:
-    with st.spinner("Optimizing Fares..."):
+    with st.spinner("Processing Network..."):
         all_dfs = [pd.read_excel(f, sheet_name='Main Sheet', header=1) for f in uploaded_files]
         raw_df = pd.concat(all_dfs, ignore_index=True)
         raw_df.columns = [str(c).strip() for c in raw_df.columns]
         
-        # Clean Descriptions (No more ALL CAPS)
+        # Formatting: Proper Case for UI, Upper for Logic
         raw_df['Origin Description'] = raw_df.iloc[:, 1].astype(str).str.title().str.strip()
         raw_df['Destination Description'] = raw_df.iloc[:, 3].astype(str).str.title().str.strip()
         
@@ -78,22 +79,25 @@ if uploaded_files:
         df = raw_df.sort_values('Original_SDR', ascending=False).drop_duplicates(subset=['Match_ID']).copy()
         price_map = df.set_index('Match_ID')['Original_SDR'].to_dict()
         
+        # Foundation price (highest of return/reverse)
         def get_found_price(row):
             parts = row['Match_ID'].split("-")
             rev = f"{parts[1]}-{parts[0]}"
             m_p = max(row['Original_SDR'], price_map.get(rev, row['Original_SDR']))
-            return smart_round(m_p, sdr_rounding)
+            return round_up(m_p, sdr_rounding)
 
         df['New_SDR'] = df.apply(get_found_price, axis=1)
-        df['Ceiling_Price'] = (df['Original_SDR'] * (1 + inc_cap)).apply(lambda x: smart_round(x, sdr_rounding))
-        df['Floor_Price'] = (df['Original_SDR'] * (1 - dec_cap)).apply(lambda x: smart_round(x, sdr_rounding))
+        df['Ceiling_Price'] = (df['Original_SDR'] * (1 + inc_cap)).apply(lambda x: round_up(x, sdr_rounding))
+        df['Floor_Price'] = (df['Original_SDR'] * (1 - dec_cap)).apply(lambda x: round_up(x, sdr_rounding))
         df['Base_Price'] = df['New_SDR'].copy()
 
+        # Build Adjacency Map
         adj = defaultdict(list)
         for mid in price_map.keys():
             orig, dest = mid.split("-")
             adj[orig].append(dest)
 
+        # Optimization Loops
         for _ in range(2):
             curr_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
             for A in adj:
@@ -106,10 +110,10 @@ if uploaded_files:
                             thru = curr_prices[id_ac]
                             if s_sum < (thru - 0.01):
                                 if id_bc not in excluded_splits:
-                                    pot_inc = smart_round(curr_prices[id_bc] + (thru - s_sum)/2, sdr_rounding)
+                                    pot_inc = round_up(curr_prices[id_bc] + (thru - s_sum)/2, sdr_rounding)
                                     curr_prices[id_bc] = min(pot_inc, (price_map[id_bc] * (1 + inc_cap)))
                                 if id_ac not in excluded_splits:
-                                    pot_dec = smart_round(curr_prices[id_ab] + curr_prices[id_bc], sdr_rounding)
+                                    pot_dec = round_up(curr_prices[id_ab] + curr_prices[id_bc], sdr_rounding)
                                     curr_prices[id_ac] = max(pot_dec, (price_map[id_ac] * (1 - dec_cap)))
             df['New_SDR'] = df['Match_ID'].map(curr_prices)
 
@@ -139,7 +143,6 @@ if uploaded_files:
         st.subheader("Remaining Split Opportunities")
         split_gaps = []
         final_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
-        # Create a name map for display
         name_map = df.set_index('Origin_N')['Origin Description'].to_dict()
         
         for A in adj:
@@ -148,16 +151,9 @@ if uploaded_files:
                 for C in adj[B]:
                     id_ac, id_ab, id_bc = f"{A}-{C}", f"{A}-{B}", f"{B}-{C}"
                     if id_ac in price_map:
-                        thru_p = final_prices[id_ac]
-                        split_p = final_prices[id_ab] + final_prices[id_bc]
+                        thru_p, split_p = final_prices[id_ac], final_prices[id_ab] + final_prices[id_bc]
                         if thru_p - split_p > 0.01:
-                            split_gaps.append({
-                                "Journey": f"{name_map.get(A, A)} to {name_map.get(C, C)}", 
-                                "Split At": name_map.get(B, B), 
-                                "New Fare": thru_p, 
-                                "Split Fare": split_p, 
-                                "Difference": round(thru_p - split_p, 2)
-                            })
+                            split_gaps.append({"Journey": f"{name_map.get(A, A)} to {name_map.get(C, C)}", "Split At": name_map.get(B, B), "New Fare": thru_p, "Split Fare": split_p, "Difference": round(thru_p - split_p, 2)})
         if split_gaps:
             st.dataframe(pd.DataFrame(split_gaps).sort_values('Difference', ascending=False).head(10), 
                          column_config={"New Fare": st.column_config.NumberColumn("New Fare", format="£%.2f"), "Split Fare": st.column_config.NumberColumn("Split Fare", format="£%.2f"), "Difference": st.column_config.NumberColumn("Difference", format="£%.2f")},
@@ -193,4 +189,4 @@ if uploaded_files:
                  column_config={"Original_SDR": st.column_config.NumberColumn("Base Fare", format="£%.2f"), "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f")},
                  use_container_width=True, hide_index=True)
     
-    st.download_button("Download New Fares", convert_df_to_csv(df), "Final_Quartz_Fares.csv", "text/csv")
+    st.download_button("Download New Fares", convert_df_to_csv(df), "Final_Fares_ProperCase.csv", "text/csv")
