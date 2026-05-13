@@ -6,6 +6,7 @@ from collections import defaultdict
 
 st.set_page_config(page_title="Anomaly Adjuster", layout="wide")
 
+# --- CACHE THE CSV CONVERSION ---
 @st.cache_data
 def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8')
@@ -21,9 +22,9 @@ with col_logo:
 
 with col_text:
     st.title("Anomaly Adjuster")
-    st.caption("Turbo Edition: Optimized for Large Datasets")
+    st.caption("Final Optimized Build: Speed + Comprehensive Audit")
 
-# --- 1. SEQUENCES (Fixed Typos) ---
+# --- 1. SEQUENCES ---
 SEQUENCES = {
     "Reading-Aldershot": ["READING", "EARLEY", "WINNERSH TRIANGLE", "WINNERSH", "WOKINGHAM", "BRACKNELL", "MARTINS HERON", "ASCOT", "BAGSHOT", "CAMBERLEY", "FRIMLEY", "ASH VALE", "ALDERSHOT", "FARNHAM", "BENTLEY", "ALTON"],
     "Ascot-Ashtead": ["ASCOT", "BAGSHOT", "CAMBERLEY", "FRIMLEY", "ASH VALE", "ALDERSHOT", "ASH", "WANBOROUGH", "GUILDFORD", "LONDON ROAD (GUILDFORD)", "CLANDON", "HORSLEY", "EFFINGHAM JUNCTION", "BOOKHAM", "LEATHERHEAD", "ASHTEAD"],
@@ -42,111 +43,144 @@ def round_up(x, base):
     return math.ceil(round(float(x), 2) * (1/base)) / (1/base)
 
 # --- 2. SIDEBAR ---
-st.sidebar.header("1. Exclusions")
-raw_split_ex = st.sidebar.text_area("Split-Ticket Exclusions:", value="READING-EARLEY")
+st.sidebar.header("1. Split-Ticket Exclusions")
+raw_split_ex = st.sidebar.text_area("Flows to exclude from adjustment:", value="READING-EARLEY")
 excluded_splits = {line.strip().upper().replace(" ", "") for line in raw_split_ex.split('\n') if "-" in line}
 
-raw_lb_ex = st.sidebar.text_area("Long-Buy Exclusions:", value="ALDERSHOT-OXSHOTT")
+st.sidebar.header("2. Long-Buy Exclusions")
+raw_lb_ex = st.sidebar.text_area("Flows to exclude from adjustment:", value="ALDERSHOT-OXSHOTT")
 excluded_longbuys = {line.strip().upper().replace(" ", "") for line in raw_lb_ex.split('\n') if "-" in line}
 
-st.sidebar.header("2. Settings")
-inc_cap = st.sidebar.slider("Max Increase (%)", 0, 70, 8) / 100
-dec_cap = st.sidebar.slider("Max Decrease (%)", 0, 70, 5) / 100
+st.sidebar.header("3. Optimisation Settings")
+inc_cap = st.sidebar.slider("Maximum Increase (cap) (%)", 0, 70, 8) / 100
+dec_cap = st.sidebar.slider("Maximum Decrease (cap) (%)", 0, 70, 5) / 100
 sdr_rounding = st.sidebar.select_slider("Rounding (£)", options=[0.00, 0.05, 0.10, 0.20, 0.50, 1.00], value=0.20)
 
 uploaded_files = st.sidebar.file_uploader("Upload Fare Spreadsheets", type=["xlsx"], accept_multiple_files=True)
 
 # --- 3. PROCESSING ---
 if uploaded_files:
-    with st.spinner("Processing Large Dataset..."):
+    with st.spinner("Optimizing Fares..."):
         all_dfs = [pd.read_excel(f, sheet_name='Main Sheet', header=1) for f in uploaded_files]
-        df = pd.concat(all_dfs, ignore_index=True)
-        df.columns = [str(c).strip() for c in df.columns]
+        raw_df = pd.concat(all_dfs, ignore_index=True)
+        raw_df.columns = [str(c).strip() for c in raw_df.columns]
         
-        df['Origin_N'] = df.iloc[:, 1].astype(str).str.upper().str.strip()
-        df['Dest_N'] = df.iloc[:, 3].astype(str).str.upper().str.strip()
-        df['Match_ID'] = df['Origin_N'].str.replace(" ", "") + "-" + df['Dest_N'].str.replace(" ", "")
-        df['Original_SDR'] = pd.to_numeric(df.iloc[:, 9], errors='coerce').fillna(0)
+        raw_df['Origin_N'] = raw_df.iloc[:, 1].astype(str).str.upper().str.strip()
+        raw_df['Dest_N'] = raw_df.iloc[:, 3].astype(str).str.upper().str.strip()
+        raw_df['Match_ID'] = raw_df['Origin_N'].str.replace(" ", "") + "-" + raw_df['Dest_N'].str.replace(" ", "")
+        raw_df['Original_SDR'] = pd.to_numeric(raw_df.iloc[:, 9], errors='coerce').fillna(0)
         
-        df = df.sort_values('Original_SDR', ascending=False).drop_duplicates(subset=['Match_ID']).copy()
-        
-        # Create indexed lookups for speed
+        df = raw_df.sort_values('Original_SDR', ascending=False).drop_duplicates(subset=['Match_ID']).copy()
         price_map = df.set_index('Match_ID')['Original_SDR'].to_dict()
         
-        # Logic for "Foundation Price"
-        def get_found(row):
+        def get_found_price(row):
             parts = row['Match_ID'].split("-")
             rev = f"{parts[1]}-{parts[0]}"
-            max_p = max(row['Original_SDR'], price_map.get(rev, row['Original_SDR']))
-            return round_up(max_p, sdr_rounding)
+            m_p = max(row['Original_SDR'], price_map.get(rev, row['Original_SDR']))
+            return round_up(m_p, sdr_rounding)
 
-        df['New_SDR'] = df.apply(get_found, axis=1)
+        df['New_SDR'] = df.apply(get_found_price, axis=1)
         df['Ceiling_Price'] = (df['Original_SDR'] * (1 + inc_cap)).apply(lambda x: round_up(x, sdr_rounding))
         df['Floor_Price'] = (df['Original_SDR'] * (1 - dec_cap)).apply(lambda x: round_up(x, sdr_rounding))
         df['Base_Price'] = df['New_SDR'].copy()
 
-        # --- 4. THE SPEED OPTIMIZATION (Graph Mapping) ---
-        # Map out which stations connect to what to avoid 8 million iterations
+        # Build Adjacency Map for Speed
         adj = defaultdict(list)
         for mid in price_map.keys():
             orig, dest = mid.split("-")
             adj[orig].append(dest)
 
-        # Loop optimized
-        for _ in range(2): # 2 passes is usually enough for convergence
-            new_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
+        # Pass 1 & 2 for Split Corrections
+        for _ in range(2):
+            curr_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
             for A in adj:
                 for B in adj[A]:
                     if B not in adj: continue
                     for C in adj[B]:
                         id_ac, id_ab, id_bc = f"{A}-{C}", f"{A}-{B}", f"{B}-{C}"
                         if id_ac in price_map:
-                            s_sum = new_prices[id_ab] + new_prices[id_bc]
-                            thru = new_prices[id_ac]
+                            s_sum = curr_prices[id_ab] + curr_prices[id_bc]
+                            thru = curr_prices[id_ac]
                             if s_sum < (thru - 0.01):
-                                # Update logic
                                 if id_bc not in excluded_splits:
-                                    new_prices[id_bc] = min(round_up(new_prices[id_bc] + (thru - s_sum)/2, sdr_rounding), (price_map[id_bc]*(1+inc_cap)))
+                                    pot_inc = round_up(curr_prices[id_bc] + (thru - s_sum)/2, sdr_rounding)
+                                    curr_prices[id_bc] = min(pot_inc, (price_map[id_bc] * (1 + inc_cap)))
                                 if id_ac not in excluded_splits:
-                                    new_prices[id_ac] = max(round_up(new_prices[id_ab] + new_prices[id_bc], sdr_rounding), (price_map[id_ac]*(1-dec_cap)))
-            
-            # Write back to DF
-            df['New_SDR'] = df['Match_ID'].map(new_prices)
+                                    pot_dec = round_up(curr_prices[id_ab] + curr_prices[id_bc], sdr_rounding)
+                                    curr_prices[id_ac] = max(pot_dec, (price_map[id_ac] * (1 - dec_cap)))
+            df['New_SDR'] = df['Match_ID'].map(curr_prices)
 
-        # Long-buy check (limited to defined sequences)
-        for seq in SEQUENCES.values():
-            for i, start in enumerate(seq):
-                s_clean = start.replace(" ","")
-                for j, mid in enumerate(seq[i+1:], i+1):
-                    m_clean = mid.replace(" ","")
-                    for k, end in enumerate(seq[j+1:], j+1):
-                        e_clean = end.replace(" ","")
-                        id_s, id_l = f"{s_clean}-{m_clean}", f"{s_clean}-{e_clean}"
-                        if id_s in price_map and id_l in price_map:
-                            p_s = df.loc[df['Match_ID']==id_s, 'New_SDR'].values[0]
-                            p_l = df.loc[df['Match_ID']==id_l, 'New_SDR'].values[0]
-                            if p_l < p_s and id_l not in excluded_longbuys:
-                                ceil = df.loc[df['Match_ID']==id_l, 'Ceiling_Price'].values[0]
-                                df.loc[df['Match_ID']==id_l, 'New_SDR'] = min(p_s, ceil)
-
-    # --- UI DISPLAY ---
+    # Calculate differences for display
     df['Diff'] = df['New_SDR'] - df['Original_SDR']
     df['Opt_Increase'] = df['New_SDR'] - df['Base_Price']
     df['Status'] = df['Diff'].apply(lambda x: "Increased" if x > 0.01 else ("Decreased" if x < -0.01 else "Unchanged"))
 
+    # --- DASHBOARD ---
     st.divider()
-    c1, c2 = st.columns(2)
-    with c1:
+    r1c1, r1c2 = st.columns(2)
+    with r1c1:
         st.subheader("Top 10 Price Increases")
-        st.dataframe(df.sort_values('Opt_Increase', ascending=False).head(10)[['Origin Description', 'Destination Description', 'Base_Price', 'New_SDR', 'Opt_Increase']], use_container_width=True, hide_index=True)
-    with c2:
+        st.dataframe(df.sort_values('Opt_Increase', ascending=False).head(10)[['Origin Description', 'Destination Description', 'Base_Price', 'New_SDR', 'Opt_Increase']], 
+                     column_config={"Base_Price": st.column_config.NumberColumn("Base Fare", format="£%.2f"), "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f"), "Opt_Increase": st.column_config.NumberColumn("Increase", format="£%.2f")}, 
+                     use_container_width=True, hide_index=True)
+    with r1c2:
         st.subheader("Top 10 Price Decreases")
         dec_disp = df.sort_values('Diff', ascending=True).head(10).copy()
         dec_disp['Diff'] = dec_disp['Diff'].abs()
-        st.dataframe(dec_disp[['Origin Description', 'Destination Description', 'Original_SDR', 'New_SDR', 'Diff']], use_container_width=True, hide_index=True)
+        st.dataframe(dec_disp[['Origin Description', 'Destination Description', 'Original_SDR', 'New_SDR', 'Diff']], 
+                     column_config={"Original_SDR": st.column_config.NumberColumn("Base Fare", format="£%.2f"), "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f"), "Diff": st.column_config.NumberColumn("Decrease", format="£%.2f")}, 
+                     use_container_width=True, hide_index=True)
+
+    st.divider()
+    r2c1, r2c2 = st.columns(2)
+    with r2c1:
+        st.subheader("Remaining Split Opportunities")
+        split_gaps = []
+        final_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
+        for A in adj:
+            for B in adj[A]:
+                if B not in adj: continue
+                for C in adj[B]:
+                    id_ac, id_ab, id_bc = f"{A}-{C}", f"{A}-{B}", f"{B}-{C}"
+                    if id_ac in price_map:
+                        thru_p = final_prices[id_ac]
+                        split_p = final_prices[id_ab] + final_prices[id_bc]
+                        if thru_p - split_p > 0.01:
+                            # Re-fetch descriptions for display
+                            split_gaps.append({"Journey": f"{A} to {C}", "Split At": B, "New Fare": thru_p, "Split Fare": split_p, "Difference": round(thru_p - split_p, 2)})
+        if split_gaps:
+            st.dataframe(pd.DataFrame(split_gaps).sort_values('Difference', ascending=False).head(10), 
+                         column_config={"New Fare": st.column_config.NumberColumn("New Fare", format="£%.2f"), "Split Fare": st.column_config.NumberColumn("Split Fare", format="£%.2f"), "Difference": st.column_config.NumberColumn("Difference", format="£%.2f")},
+                         use_container_width=True, hide_index=True)
+        else:
+            st.success("No split-ticket opportunities remaining")
+
+    with r2c2:
+        st.subheader("Remaining Long-Buying Opportunities")
+        lb_gaps = []
+        for seq_name, path in SEQUENCES.items():
+            for i, start in enumerate(path):
+                s_c = start.replace(" ","")
+                for j, near in enumerate(path[i+1:], i+1):
+                    n_c = near.replace(" ","")
+                    for k, far in enumerate(path[j+1:], j+1):
+                        f_c = far.replace(" ","")
+                        id_n, id_f = f"{s_c}-{n_c}", f"{s_c}-{f_c}"
+                        if id_n in final_prices and id_f in final_prices:
+                            p_n, p_f = final_prices[id_n], final_prices[id_f]
+                            if p_n - p_f > 0.01:
+                                lb_gaps.append({"Journey": f"{start} to", "Destination": near, "Higher than (next stop)": far, "By": round(p_n - p_f, 2)})
+        if lb_gaps:
+            st.dataframe(pd.DataFrame(lb_gaps).sort_values('By', ascending=False).head(10), 
+                         column_config={"By": st.column_config.NumberColumn("By", format="£%.2f")},
+                         use_container_width=True, hide_index=True)
+        else:
+            st.info("No long-buying opportunities remaining")
 
     st.divider()
     st.subheader("Full Summary")
-    st.dataframe(df[['Origin Description', 'Destination Description', 'Original_SDR', 'New_SDR', 'Status']], use_container_width=True, hide_index=True)
+    st.dataframe(df[['Origin Description', 'Destination Description', 'Original_SDR', 'New_SDR', 'Status']], 
+                 column_config={"Original_SDR": st.column_config.NumberColumn("Base Fare", format="£%.2f"), "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f")},
+                 use_container_width=True, hide_index=True)
     
-    st.download_button("Download New Fares", convert_df_to_csv(df), "Final_Fares.csv", "text/csv")
+    st.download_button("Download New Fares", convert_df_to_csv(df), "Final_Quartz_Fares.csv", "text/csv")
