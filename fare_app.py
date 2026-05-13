@@ -97,29 +97,45 @@ if uploaded_files:
         df['Ceiling_Price'] = (df['Original_SDR'] * (1 + inc_cap)).apply(lambda x: round_up(x, sdr_rounding))
         df['Floor_Price'] = (df['Original_SDR'] * (1 - dec_cap)).apply(lambda x: round_up(x, sdr_rounding))
 
-        # 3.2 High-Speed Adjacency Loop
+        # 3.2 High-Speed Adjacency Map
         adj = defaultdict(list)
         for mid in raw_price_map.keys():
             o, d = mid.split("-")
             adj[o].append(d)
 
+        # 3.3 The Optimization Loops (Now with Exclusions for both Splits & Long-Buys)
         for _ in range(2):
             curr = df.set_index('Match_ID')['New_SDR'].to_dict()
+            
+            # --- PART A: SPLIT FIXING ---
             for A in adj:
                 for B in adj[A]:
                     if B not in adj: continue
                     for C in adj[B]:
                         id_ac, id_ab, id_bc = f"{A}-{C}", f"{A}-{B}", f"{B}-{C}"
                         if id_ac in curr:
-                            thru = curr[id_ac]
-                            split_sum = curr[id_ab] + curr.get(id_bc, 9999)
-                            if split_sum < (thru - 0.009):
+                            thru, s_sum = curr[id_ac], curr[id_ab] + curr.get(id_bc, 9999)
+                            if s_sum < (thru - 0.009):
                                 if id_bc in curr and id_bc not in excluded_splits:
-                                    pot_inc = round_up(curr[id_bc] + (thru - split_sum)/2, sdr_rounding)
+                                    pot_inc = round_up(curr[id_bc] + (thru - s_sum)/2, sdr_rounding)
                                     curr[id_bc] = min(pot_inc, df.loc[df['Match_ID']==id_bc, 'Ceiling_Price'].values[0])
                                 if id_ac not in excluded_splits:
                                     pot_dec = round_up(curr[id_ab] + curr[id_bc], sdr_rounding)
                                     curr[id_ac] = max(pot_dec, df.loc[df['Match_ID']==id_ac, 'Floor_Price'].values[0])
+            
+            # --- PART B: LONG-BUY FIXING (Uses your second sidebar list) ---
+            for path in SEQUENCES.values():
+                for i, s in enumerate(path):
+                    for j, n in enumerate(path[i+1:], i+1):
+                        for k, f in enumerate(path[j+1:], j+1):
+                            id_near = f"{s.replace(' ','')}-{n.replace(' ','')}"
+                            id_far = f"{s.replace(' ','')}-{f.replace(' ','')}"
+                            if id_near in curr and id_far in curr:
+                                if curr[id_near] > curr[id_far]:
+                                    if id_near not in excluded_longbuys:
+                                        # Fix: reduce the 'Near' fare to match the 'Far' fare (within floor limits)
+                                        curr[id_near] = max(curr[id_far], df.loc[df['Match_ID']==id_near, 'Floor_Price'].values[0])
+
             df['New_SDR'] = df['Match_ID'].map(curr)
 
     # Calculation for UI Display
