@@ -5,6 +5,11 @@ import os
 
 st.set_page_config(page_title="Anomaly Adjuster", layout="wide")
 
+# --- SPEED FIX: CACHE THE CSV CONVERSION ---
+@st.cache_data
+def convert_df_to_csv(df):
+    return df.to_csv(index=False).encode('utf-8')
+
 # --- HEADER ---
 col_logo, col_text = st.columns([1, 5])
 with col_logo:
@@ -29,11 +34,11 @@ SEQUENCES = {
     "Alton Main Line": ["ALTON", "BENTLEY", "FARNHAM", "ALDERSHOT", "ASH VALE", "BROOKWOOD", "WOKING", "WEST BYFLEET", "BYFLEET & NEW HAW", "WEYBRIDGE", "WALTON-ON-THAMES", "HERSHAM", "ESHER", "SURBITON", "CLAPHAM JUNCTION", "QUEENSTOWN ROAD (BATTERSEA)", "LONDON BR", "ZONE R1256 LONDON"],
     "Guildford-Hinchley Wood-via-Clandon": ["GUILDFORD", "LONDON ROAD (GUILDFORD)", "CLANDON", "HORSLEY", "EFFINGHAM JUNCTION", "COBHAM & STOKE D'ABERNON", "OXSHOTT", "CLAYGATE", "HINCHLEY WOOD"],
     "Ash-Chertsey": ["ASH", "WANBOROUGH", "GUILDFORD", "WORPLESDON", "WOKING", "WEST BYFLEET", "BYFLEET & NEW HAW", "WEYBRIDGE", "ADDLESTONE", "CHERTSEY"]
-    
 }
 
 def round_up(x, base):
     if pd.isna(x) or x == 0: return 0
+    if base == 0: return round(float(x), 2)
     return math.ceil(round(float(x), 2) * (1/base)) / (1/base)
 
 # --- 2. SIDEBAR ---
@@ -81,7 +86,7 @@ if uploaded_files:
     df['Floor_Price'] = (df['Original_SDR'] * (1 - dec_cap)).apply(lambda x: round_up(x, sdr_rounding))
     df['Base_Price'] = df['New_SDR'].copy() 
 
-    # --- 4. LOOP ---
+    # --- 4. OPTIMIZATION LOOP ---
     all_stations = list(set(df['Origin_N'].unique()) | set(df['Dest_N'].unique()))
     for pass_num in range(4):
         for A in all_stations:
@@ -119,7 +124,6 @@ if uploaded_files:
     
     with r1c2:
         st.subheader("Top 10 Price Decreases")
-        # Fix: Show absolute value for 'Drop' to avoid £-2.50 formatting
         decreases_display = df.sort_values('Diff', ascending=True).head(10).copy()
         decreases_display['Diff'] = decreases_display['Diff'].abs()
         st.dataframe(decreases_display[['Origin Description', 'Destination Description', 'Original_SDR', 'New_SDR', 'Diff']], 
@@ -138,30 +142,18 @@ if uploaded_files:
         split_gaps = []
         for A in all_stations:
             for C in all_stations:
-                match_id = A.replace(" ", "") + "-" + C.replace(" ", "")
-                if match_id not in price_lookup: continue
-                thru_p = df[df['Match_ID'] == match_id]['New_SDR'].iloc[0]
+                m_id = A.replace(" ", "") + "-" + C.replace(" ", "")
+                if m_id not in price_lookup: continue
+                thru_p = df[df['Match_ID'] == m_id]['New_SDR'].iloc[0]
                 for B in all_stations:
                     id_ab, id_bc = A.replace(" ", "") + "-" + B.replace(" ", ""), B.replace(" ", "") + "-" + C.replace(" ", "")
                     if id_ab in price_lookup and id_bc in price_lookup:
                         split_p = df[df['Match_ID'] == id_ab]['New_SDR'].iloc[0] + df[df['Match_ID'] == id_bc]['New_SDR'].iloc[0]
                         if thru_p - split_p > 0.01:
-                            # Added "Split At": B here
-                            split_gaps.append({
-                                "Journey": f"{A} to {C}", 
-                                "Split At": B, 
-                                "New Fare": thru_p, 
-                                "Split Fare": split_p, 
-                                "Difference": round(thru_p - split_p, 2)
-                            })
+                            split_gaps.append({"Journey": f"{A} to {C}", "Split At": B, "New Fare": thru_p, "Split Fare": split_p, "Difference": round(thru_p - split_p, 2)})
         if split_gaps:
-            # Added "Split At" to the list of displayed columns
             st.dataframe(pd.DataFrame(split_gaps).sort_values('Difference', ascending=False).head(10), 
-                         column_config={
-                             "New Fare": st.column_config.NumberColumn("New Fare", format="£%.2f"), 
-                             "Split Fare": st.column_config.NumberColumn("Split Fare", format="£%.2f"), 
-                             "Difference": st.column_config.NumberColumn("Difference", format="£%.2f")
-                         },
+                         column_config={"New Fare": st.column_config.NumberColumn("New Fare", format="£%.2f"), "Split Fare": st.column_config.NumberColumn("Split Fare", format="£%.2f"), "Difference": st.column_config.NumberColumn("Difference", format="£%.2f")},
                          use_container_width=True, hide_index=True)
         else:
             st.success("No split-ticket opportunities remaining")
@@ -190,4 +182,12 @@ if uploaded_files:
     st.dataframe(df[['Origin Description', 'Destination Description', 'Original_SDR', 'New_SDR', 'Status']], 
                  column_config={"Original_SDR": st.column_config.NumberColumn("Base Fare", format="£%.2f"), "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f")},
                  use_container_width=True, hide_index=True)
-    st.download_button("Sample Quartz Fares CSV", df.to_csv(index=False), "Final_Quartz_Fares.csv")
+    
+    # --- SPEED FIX: PRE-CONVERT DATA ONCE ---
+    csv_data = convert_df_to_csv(df)
+    st.download_button(
+        label="Download New Fares",
+        data=csv_data,
+        file_name="Final_Quartz_Fares.csv",
+        mime="text/csv",
+    )
