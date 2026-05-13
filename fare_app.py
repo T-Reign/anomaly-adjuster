@@ -190,4 +190,18 @@ if uploaded_files:
     st.dataframe(df[['Origin Description', 'Destination Description', 'Original_SDR', 'New_SDR', 'Status']], 
                  column_config={"Original_SDR": st.column_config.NumberColumn("Base Fare", format="£%.2f"), "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f")},
                  use_container_width=True, hide_index=True)
-    st.download_button("Download New Fares", df.to_csv(index=False), "Final_Quartz_Fares.csv")
+    # 1. Create a function to convert the data (wrapped in a cache)
+    @st.cache_data
+    def convert_df(df_to_convert):
+        return df_to_convert.to_csv(index=False).encode('utf-8')
+
+    # 2. Call the function
+    csv_data = convert_df(df)
+
+    # 3. Use the pre-converted data in the button
+    st.download_button(
+        label="Download New Fares",
+        data=csv_data,
+        file_name="Final_Quartz_Fares.csv",
+        mime="text/csv"
+    )
