@@ -39,10 +39,7 @@ SEQUENCES = {
 }
 
 def round_up(x, base):
-    """Always rounds UP to the next boundary (e.g., 30.01 -> 30.20)"""
-    if pd.isna(x) or x <= 0: return 0.0
-    if base < 0.01: return round(float(x), 2)
-    # math.ceil handles the upward push
+    if pd.isna(x) or x == 0: return 0
     return math.ceil(round(float(x), 2) * (1/base)) / (1/base)
 
 # --- 2. SIDEBAR ---
