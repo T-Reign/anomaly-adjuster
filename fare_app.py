@@ -285,4 +285,4 @@ if uploaded_files:
                      column_config={"Original_SDR": st.column_config.NumberColumn("Original", format="£%.2f"), "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f")},
                      use_container_width=True, hide_index=True)
         
-        st.download_button("Download New Fares", convert_df_to_csv(df), "Final_Quartz_Fares.csv", "text/csv")
+    st.download_button("Download New Fares", convert_df_to_csv(df), "Final_Quartz_Fares.csv", "text/csv")
