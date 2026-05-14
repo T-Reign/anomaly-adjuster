@@ -181,23 +181,47 @@ if uploaded_files:
 
     with r2c2:
         st.subheader("Remaining Long-Buy Opportunities")
+
         lb_gaps = []
+
         for path in SEQUENCES.values():
-            for i, s in enumerate(path):
-                s_c = s.replace(" ","")
-                for j, n in enumerate(path[i+1:], i+1):
-                    n_c = n.replace(" ","")
-                    for k, f in enumerate(path[j+1:], j+1):
-                        id_n, id_f = f"{s_c}-{n_c}", f"{s_c}-{f_c}"
-                        if id_n in f_prices and id_f in f_prices:
-                            if f_prices[id_n] > f_prices[id_f]:
-                                lb_gaps.append({"Journey": f"{s.title()}", "Dest": n.title(), "Price": f_prices[id_n], "More expensive than": f.title(), "By": round(f_prices[id_n] - f_prices[id_f], 2)})
+            # Clean station names for ID matching
+            clean_path = [p.replace(" ", "") for p in path]
+
+            for i, s in enumerate(clean_path):
+                for j, n in enumerate(clean_path[i+1:], i+1):
+                    id_sn = f"{s}-{n}"
+
+                    for k, f in enumerate(clean_path[j+1:], j+1):
+                        id_sf = f"{s}-{f}"
+
+                        if id_sn in f_prices and id_sf in f_prices:
+                            near = f_prices[id_sn]
+                            far = f_prices[id_sf]
+
+                            if near > far + 0.01:
+                                lb_gaps.append({
+                                    "Origin": path[i].title(),
+                                    "Intended Dest": path[j].title(),
+                                    "Further Dest": path[k].title(),
+                                    "Price to Intended": near,
+                                    "Price to Further": far,
+                                    "Overcharge": round(near - far, 2)
+                                })
+
         if lb_gaps:
-            st.dataframe(pd.DataFrame(lb_gaps).sort_values('By', ascending=False).head(10), 
-                         column_config={"Price": st.column_config.NumberColumn(format="£%.2f"), "By": st.column_config.NumberColumn(format="£%.2f")},
-                         use_container_width=True, hide_index=True)
-        else:
-            st.info("No Long-Buying Opportunities Found")
+           st.dataframe(
+               pd.DataFrame(lb_gaps).sort_values("Overcharge", ascending=False).head(10),
+               column_config={
+                   "Price to Intended": st.column_config.NumberColumn(format="£%.2f"),
+                   "Price to Further": st.column_config.NumberColumn(format="£%.2f"),
+                   "Overcharge": st.column_config.NumberColumn(format="£%.2f")
+               },
+               use_container_width=True,
+               hide_index=True
+           )
+       else:
+           st.info("No Long-Buying Opportunities Found")
 
     st.divider()
     st.subheader("Full Fare Summary")
