@@ -179,7 +179,7 @@ if uploaded_files:
         else:
             st.success("No Split-Ticket Opportunities Found")
 
-   with r2c2:
+with r2c2:
     st.subheader("Remaining Long-Buy Opportunities")
     lb_gaps = []
 
