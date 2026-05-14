@@ -220,8 +220,8 @@ if uploaded_files:
                use_container_width=True,
                hide_index=True
            )
-       else:
-           st.info("No Long-Buying Opportunities Found")
+        else:
+            st.info("No Long-Buying Opportunities Found")
 
     st.divider()
     st.subheader("Full Fare Summary")
