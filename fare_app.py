@@ -179,13 +179,13 @@ if uploaded_files:
         else:
             st.success("No Split-Ticket Opportunities Found")
 
-    with r2c2:
-        st.subheader("Remaining Long-Buy Opportunities")
-        lb_gaps = []
-        for path in SEQUENCES.values():
-            for i, s in enumerate(path):
-                s_c = s.replace(" ","")
-                for j, n in enumerate(path[i+1:], i+1):
+   with r2c2:
+    st.subheader("Remaining Long-Buy Opportunities")
+    lb_gaps = []
+    for path in SEQUENCES.values():
+        for i, s in enumerate(path):
+            s_c = s.replace(" ", "")
+            for j, n in enumerate
                     n_c = n.replace(" ","")
                     for k, f in enumerate(path[j+1:], j+1):
                         id_n, id_f = f"{s_c}-{n_c}", f"{s_c}-{f_c}"
