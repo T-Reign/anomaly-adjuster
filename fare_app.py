@@ -166,43 +166,118 @@ if uploaded_files:
                          use_container_width=True, hide_index=True)
 
         st.divider()
-        r2c1, r2c2 = st.columns(2)
-        with r2c1:
-            st.subheader("Remaining Split-Ticketing Opportunities")
-            f_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
-            n_map = df.set_index('Origin_N')['Origin Description'].to_dict()
-            gaps = []
-            for A in adj:
-                for B in adj[A]:
-                    if B not in adj: continue
-                    for C in adj[B]:
-                        id_ac, id_ab, id_bc = f"{A}-{C}", f"{A}-{B}", f"{B}-{C}"
-                        if id_ac in f_prices:
-                            thru, s_sum = f_prices[id_ac], f_prices[id_ab] + f_prices.get(id_bc, 0)
-                            if thru > (s_sum + 0.01):
-                                gaps.append({"Journey": f"{n_map.get(A, A)} to {n_map.get(C, C)}", "Split At": n_map.get(B, B), "New Fare": thru, "Split Fare": s_sum, "Difference": round(thru - s_sum, 2)})
-            if gaps:
-                st.dataframe(pd.DataFrame(gaps).sort_values('Difference', ascending=False).head(300), use_container_width=True, hide_index=True)
-            else:
-                st.success("No Split-Ticket Opportunities Found")
+    r2c1, r2c2 = st.columns(2)
+    with r2c1:
+        st.subheader("Remaining Split-Ticketing Opportunities")
+        f_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
+        n_map = df.set_index('Origin_N')['Origin Description'].to_dict()
+        gaps = []
+        for A in adj:
+            for B in adj[A]:
+                if B not in adj: continue
+                for C in adj[B]:
+                    id_ac, id_ab, id_bc = f"{A}-{C}", f"{A}-{B}", f"{B}-{C}"
+                    if id_ac in f_prices:
+                        thru, s_sum = f_prices[id_ac], f_prices[id_ab] + f_prices.get(id_bc, 0)
+                        if thru > (s_sum + 0.01):
+                            gaps.append({"Journey": f"{n_map.get(A, A)} to {n_map.get(C, C)}", "Split At": n_map.get(B, B), "New Fare": thru, "Split Fare": s_sum, "Difference": round(thru - s_sum, 2)})
+        if gaps:
+            st.dataframe(pd.DataFrame(gaps).sort_values('Difference', ascending=False).head(300), 
+                         column_config={"New Fare": st.column_config.NumberColumn(format="£%.2f"), "Split Fare": st.column_config.NumberColumn(format="£%.2f"), "Difference": st.column_config.NumberColumn(format="£%.2f")},
+                         use_container_width=True, hide_index=True)
+        else:
+            st.success("No Split-Ticket Opportunities Found")
+        # Count how many split-ticket issues existed before optimisation
+        # (same logic as your detection loop, but using Base_Price instead of New_SDR)
+        base_prices = df.set_index('Match_ID')['Base_Price'].to_dict()
+        split_before = 0
+        for A in adj:
+            for B in adj[A]:
+                if B not in adj: continue
+                for C in adj[B]:
+                    id_ac, id_ab, id_bc = f"{A}-{C}", f"{A}-{B}", f"{B}-{C}"
+                    if id_ac in base_prices:
+                        thru = base_prices[id_ac]
+                        s_sum = base_prices[id_ab] + base_prices.get(id_bc, 0)
+                        if thru > s_sum + 0.01:
+                                split_before += 1
 
-        with r2c2:
-            st.subheader("Remaining Long-Buying Opportunities")
-            lb_gaps = []
-            for path in SEQUENCES.values():
-                clean_path = [p.replace(" ", "") for p in path]
-                for i, s in enumerate(clean_path):
-                    for j, n in enumerate(clean_path[i+1:], i+1):
-                        id_sn = f"{s}-{n}"
-                        for k, f in enumerate(clean_path[j+1:], j+1):
-                            id_sf = f"{s}-{f}"
-                            if id_sn in f_prices and id_sf in f_prices:
-                                if f_prices[id_sn] > f_prices[id_sf] + 0.01:
-                                    lb_gaps.append({"Origin(A)": path[i].title(), "Destination(B)": path[j].title(), "Following Stn(C)": path[k].title(), "Price to B": f_prices[id_sn], "Price to C": f_prices[id_sf], "Difference": round(f_prices[id_sn] - f_prices[id_sf], 2)})
-            if lb_gaps:
-                st.dataframe(pd.DataFrame(lb_gaps).sort_values("Difference", ascending=False).head(30), use_container_width=True, hide_index=True)
-            else:
-                st.info("No Long-Buying Opportunities Found")
+        split_after = len(gaps)
+        split_solved = split_before - split_after
+
+        st.markdown(
+            (
+                f"**Split-ticket opportunities solved:** {split_solved}<br>"
+                f"**Remaining:** {split_after}"
+            ),
+            unsafe_allow_html=True
+        )
+    with r2c2:
+        st.subheader("Remaining Long-Buying Opportunities")
+
+        lb_gaps = []
+
+        for path in SEQUENCES.values():
+            # Clean station names for ID matching
+            clean_path = [p.replace(" ", "") for p in path]
+
+            for i, s in enumerate(clean_path):
+                for j, n in enumerate(clean_path[i+1:], i+1):
+                    id_sn = f"{s}-{n}"
+
+                    for k, f in enumerate(clean_path[j+1:], j+1):
+                        id_sf = f"{s}-{f}"
+
+                        if id_sn in f_prices and id_sf in f_prices:
+                            near = f_prices[id_sn]
+                            far = f_prices[id_sf]
+
+                            if near > far + 0.01:
+                                lb_gaps.append({
+                                    "Origin(A)": path[i].title(),
+                                    "Destination(B)": path[j].title(),
+                                    "Following Stn(C)": path[k].title(),
+                                    "Price to B": near,
+                                    "Price to C": far,
+                                    "Difference": round(near - far, 2)
+                                })
+
+        if lb_gaps:
+           st.dataframe(
+               pd.DataFrame(lb_gaps).sort_values("Difference", ascending=False).head(30),
+               column_config={
+                   "Price to B": st.column_config.NumberColumn(format="£%.2f"),
+                   "Price to C": st.column_config.NumberColumn(format="£%.2f"),
+                   "Difference": st.column_config.NumberColumn(format="£%.2f")
+               },
+               use_container_width=True,
+               hide_index=True
+           )
+        else:
+            st.info("No Long-Buying Opportunities Found")
+            # Count long-buy issues BEFORE optimisation
+        lb_before = 0
+        for path in SEQUENCES.values():
+            clean = [p.replace(" ", "") for p in path]
+            for i, s in enumerate(clean):
+                for j, n in enumerate(clean[i+1:], i+1):
+                    id_sn = f"{s}-{n}"
+                    for k, f in enumerate(clean[j+1:], j+1):
+                        id_sf = f"{s}-{f}"
+                        if id_sn in base_prices and id_sf in base_prices:
+                            if base_prices[id_sn] > base_prices[id_sf] + 0.01:
+                                    lb_before += 1
+
+        lb_after = len(lb_gaps)
+        lb_solved = lb_before - lb_after
+
+        st.markdown(
+            (
+                f"**Long-buying opportunities solved:** {lb_solved}<br>"
+                f"**Remaining:** {lb_after}"
+            ),
+            unsafe_allow_html=True
+        )
 
         st.divider()
         st.subheader("Full Fare Summary")
