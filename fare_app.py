@@ -136,8 +136,7 @@ if uploaded_files:
 
             df['New_SDR'] = df['Match_ID'].map(curr)
 
-    df['New_SDR'] = df['Match_ID'].map(final_prices)
-
+    # UI Calculation
     df['Diff'] = df['New_SDR'] - df['Original_SDR']
     df['Opt_Increase'] = df['New_SDR'] - df['Base_Price']
     df['Status'] = df['Diff'].apply(lambda x: "Increased" if x > 0.01 else ("Decreased" if x < -0.01 else "Unchanged"))
