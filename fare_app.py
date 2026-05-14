@@ -178,8 +178,8 @@ if uploaded_files:
                          use_container_width=True, hide_index=True)
         else:
             st.success("No Split-Ticket Opportunities Found")
-
-with r2c2:
+           
+            with r1c2:
     st.subheader("Remaining Long-Buy Opportunities")
     lb_gaps = []
 
