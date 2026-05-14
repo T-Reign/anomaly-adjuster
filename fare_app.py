@@ -279,9 +279,9 @@ if uploaded_files:
             unsafe_allow_html=True
         )
 
-        st.divider()
-        st.subheader("Full Fare Summary")
-        st.dataframe(df[['Origin Description', 'Destination Description', 'Original_SDR', 'New_SDR', 'Status']], 
+    st.divider()
+    st.subheader("Full Fare Summary")
+    st.dataframe(df[['Origin Description', 'Destination Description', 'Original_SDR', 'New_SDR', 'Status']], 
                      column_config={"Original_SDR": st.column_config.NumberColumn("Original", format="£%.2f"), "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f")},
                      use_container_width=True, hide_index=True)
         
