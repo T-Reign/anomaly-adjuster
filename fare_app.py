@@ -268,8 +268,8 @@ if uploaded_files:
             unsafe_allow_html=True
         )
 
-        else:
-            st.info("No Long-Buying Opportunities Found")
+    else:
+        st.info("No Long-Buying Opportunities Found")
 
     st.divider()
     st.subheader("Full Fare Summary")
