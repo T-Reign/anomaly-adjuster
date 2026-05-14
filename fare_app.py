@@ -225,11 +225,11 @@ if uploaded_files:
 
                             if near > far + 0.01:
                                 lb_gaps.append({
-                                    "Origin": path[i].title(),
-                                    "Intended Dest": path[j].title(),
-                                    "Following Stn": path[k].title(),
-                                    "Price to Intended": near,
-                                    "Price to Following Stn": far,
+                                    "Origin(A)": path[i].title(),
+                                    "Destination(B)": path[j].title(),
+                                    "Following Stn(C)": path[k].title(),
+                                    "Price to B": near,
+                                    "Price to C": far,
                                     "Difference": round(near - far, 2)
                                 })
 
@@ -237,8 +237,8 @@ if uploaded_files:
            st.dataframe(
                pd.DataFrame(lb_gaps).sort_values("Difference", ascending=False).head(30),
                column_config={
-                   "Price to Intended": st.column_config.NumberColumn(format="£%.2f"),
-                   "Price to Following Stn": st.column_config.NumberColumn(format="£%.2f"),
+                   "Price to B": st.column_config.NumberColumn(format="£%.2f"),
+                   "Price to C": st.column_config.NumberColumn(format="£%.2f"),
                    "Difference": st.column_config.NumberColumn(format="£%.2f")
                },
                use_container_width=True,
