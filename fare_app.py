@@ -180,7 +180,7 @@ if uploaded_files:
             st.success("No Split-Ticket Opportunities Found")
            
             with r1c2:
-    st.subheader("Remaining Long-Buy Opportunities")
+            st.subheader("Remaining Long-Buy Opportunities")
     lb_gaps = []
 
     for path in SEQUENCES.values():
