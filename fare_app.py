@@ -97,6 +97,8 @@ if uploaded_files:
         # Adjacency Map for Splits
         adj = defaultdict(list)
         for mid in raw_price_map.keys():
+            if "-" not in mid:
+                continue  # skip malformed IDs
             o, d = mid.split("-")
             adj[o].append(d)
 
