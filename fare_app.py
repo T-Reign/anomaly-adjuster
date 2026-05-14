@@ -178,7 +178,28 @@ if uploaded_files:
                          use_container_width=True, hide_index=True)
         else:
             st.success("No Split-Ticket Opportunities Found")
+            # Count how many split-ticket issues existed before optimisation
+            # (same logic as your detection loop, but using Base_Price instead of New_SDR)
+            base_prices = df.set_index('Match_ID')['Base_Price'].to_dict()
+            split_before = 0
+            for A in adj:
+                for B in adj[A]:
+                    if B not in adj: continue
+                    for C in adj[B]:
+                        id_ac, id_ab, id_bc = f"{A}-{C}", f"{A}-{B}", f"{B}-{C}"
+                        if id_ac in base_prices:
+                            thru = base_prices[id_ac]
+                            s_sum = base_prices[id_ab] + base_prices.get(id_bc, 0)
+                            if thru > s_sum + 0.01:
+                                split_before += 1
 
+        split_after = len(gaps)
+        split_solved = split_before - split_after
+
+        st.markdown(
+            f"**Split-ticket issues solved:** {split_solved}  
+             **Remaining:** {split_after}"
+        )
     with r2c2:
         st.subheader("Remaining Long-Buying Opportunities")
 
@@ -220,6 +241,26 @@ if uploaded_files:
                use_container_width=True,
                hide_index=True
            )
+            # Count long-buy issues BEFORE optimisation
+            lb_before = 0
+            for path in SEQUENCES.values():
+                clean = [p.replace(" ", "") for p in path]
+                for i, s in enumerate(clean):
+                    for j, n in enumerate(clean[i+1:], i+1):
+                        id_sn = f"{s}-{n}"
+                        for k, f in enumerate(clean[j+1:], j+1):
+                            id_sf = f"{s}-{f}"
+                            if id_sn in base_prices and id_sf in base_prices:
+                                if base_prices[id_sn] > base_prices[id_sf] + 0.01:
+                                    lb_before += 1
+
+            lb_after = len(lb_gaps)
+            lb_solved = lb_before - lb_after
+
+            st.markdown(
+                f"**Long-buy issues solved:** {lb_solved}  
+                 **Remaining:** {lb_after}"
+             )
         else:
             st.info("No Long-Buying Opportunities Found")
 
