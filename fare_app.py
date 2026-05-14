@@ -198,7 +198,7 @@ if uploaded_files:
 
         st.markdown(
             (
-                f"**Split-ticket issues solved:** {split_solved}<br>"
+                f"**Split-ticket opportunities solved:** {split_solved}<br>"
                 f"**Remaining:** {split_after}"
             ),
             unsafe_allow_html=True
@@ -264,7 +264,7 @@ if uploaded_files:
 
         st.markdown(
             (
-                f"**Long-buy issues solved:** {lb_solved}<br>"
+                f"**Long-buying opportunities solved:** {lb_solved}<br>"
                 f"**Remaining:** {lb_after}"
             ),
             unsafe_allow_html=True
