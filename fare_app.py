@@ -55,6 +55,7 @@ raw_lb_ex = st.sidebar.text_area("Flows to exclude from long-buy adjustment:", v
 excluded_longbuys = {line.strip().upper().replace(" ", "") for line in raw_lb_ex.split('\n') if "-" in line}
 
 st.sidebar.header("3. Optimisation Settings")
+slp_enabled = st.sidebar.checkbox("Enable Single-Leg Pricing", value=True)
 inc_cap = st.sidebar.slider("Maximum Increase (cap) (%)", 0, 70, 8) / 100
 dec_cap = st.sidebar.slider("Maximum Decrease (cap) (%)", 0, 70, 5) / 100
 sdr_rounding = st.sidebar.select_slider("Rounding (£)", options=[0.01, 0.05, 0.10, 0.20, 0.50, 1.00], value=0.20)
