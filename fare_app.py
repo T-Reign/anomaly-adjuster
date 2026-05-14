@@ -180,7 +180,7 @@ if uploaded_files:
             st.success("No Split-Ticket Opportunities Found")
 
     with r2c2:
-        st.subheader("Remaining Long-Buy Opportunities")
+        st.subheader("Remaining Long-Buying Opportunities")
 
         lb_gaps = []
 
@@ -203,10 +203,10 @@ if uploaded_files:
                                 lb_gaps.append({
                                     "Origin": path[i].title(),
                                     "Intended Dest": path[j].title(),
-                                    "Further Dest": path[k].title(),
+                                    "Following Stn": path[k].title(),
                                     "Price to Intended": near,
-                                    "Price to Further": far,
-                                    "Overcharge": round(near - far, 2)
+                                    "Price to Following Stn": far,
+                                    "Difference": round(near - far, 2)
                                 })
 
         if lb_gaps:
