@@ -214,7 +214,7 @@ if uploaded_files:
                pd.DataFrame(lb_gaps).sort_values("Difference", ascending=False).head(10),
                column_config={
                    "Price to Intended": st.column_config.NumberColumn(format="£%.2f"),
-                   "Price to Following": st.column_config.NumberColumn(format="£%.2f"),
+                   "Price to Further": st.column_config.NumberColumn(format="£%.2f"),
                    "Difference": st.column_config.NumberColumn(format="£%.2f")
                },
                use_container_width=True,
