@@ -22,7 +22,7 @@ with col_logo:
 
 with col_text:
     st.title("Anomaly Adjuster")
-    st.caption("Complete Build: Split & Long-Buy Logic with Custom Exclusions")
+    st.caption("Prototype adjuster for Oval fares (part 2)")
 
 # --- 1. SEQUENCES ---
 SEQUENCES = {
@@ -63,7 +63,7 @@ uploaded_files = st.sidebar.file_uploader("Upload Fare Spreadsheets", type=["xls
 
 # --- 3. PROCESSING ---
 if uploaded_files:
-    with st.spinner("Calculating Optimized Network..."):
+    with st.spinner("Calculating Optimised Network..."):
         all_dfs = [pd.read_excel(f, sheet_name='Main Sheet', header=1) for f in uploaded_files]
         df = pd.concat(all_dfs, ignore_index=True)
         df.columns = [str(c).strip() for c in df.columns]
@@ -159,7 +159,7 @@ if uploaded_files:
     st.divider()
     r2c1, r2c2 = st.columns(2)
     with r2c1:
-        st.subheader("Remaining Split Gaps")
+        st.subheader("Remaining Split-Ticketing Opportunities")
         f_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
         n_map = df.set_index('Origin_N')['Origin Description'].to_dict()
         gaps = []
@@ -171,16 +171,16 @@ if uploaded_files:
                     if id_ac in f_prices:
                         thru, s_sum = f_prices[id_ac], f_prices[id_ab] + f_prices.get(id_bc, 0)
                         if thru > (s_sum + 0.01):
-                            gaps.append({"Journey": f"{n_map.get(A, A)} to {n_map.get(C, C)}", "Split At": n_map.get(B, B), "New Fare": thru, "Split Fare": s_sum, "Gap": round(thru - s_sum, 2)})
+                            gaps.append({"Journey": f"{n_map.get(A, A)} to {n_map.get(C, C)}", "Split At": n_map.get(B, B), "New Fare": thru, "Split Fare": s_sum, "Difference": round(thru - s_sum, 2)})
         if gaps:
-            st.dataframe(pd.DataFrame(gaps).sort_values('Gap', ascending=False).head(10), 
-                         column_config={"New Fare": st.column_config.NumberColumn(format="£%.2f"), "Split Fare": st.column_config.NumberColumn(format="£%.2f"), "Gap": st.column_config.NumberColumn(format="£%.2f")},
+            st.dataframe(pd.DataFrame(gaps).sort_values('Difference', ascending=False).head(10), 
+                         column_config={"New Fare": st.column_config.NumberColumn(format="£%.2f"), "Split Fare": st.column_config.NumberColumn(format="£%.2f"), "Difference": st.column_config.NumberColumn(format="£%.2f")},
                          use_container_width=True, hide_index=True)
         else:
-            st.success("No Split Gaps Found!")
+            st.success("No Split-Ticket Opportunities Found")
 
     with r2c2:
-        st.subheader("Remaining Long-Buy Gaps")
+        st.subheader("Remaining Long-Buy Opportunities")
         lb_gaps = []
         for path in SEQUENCES.values():
             for i, s in enumerate(path):
@@ -191,13 +191,13 @@ if uploaded_files:
                         id_n, id_f = f"{s_c}-{n_c}", f"{s_c}-{f_c}"
                         if id_n in f_prices and id_f in f_prices:
                             if f_prices[id_n] > f_prices[id_f]:
-                                lb_gaps.append({"Journey": f"{s.title()} to", "Dest": n.title(), "Price": f_prices[id_n], "Cheaper Further": f.title(), "Gap": round(f_prices[id_n] - f_prices[id_f], 2)})
+                                lb_gaps.append({"Journey": f"{s.title()}", "Dest": n.title(), "Price": f_prices[id_n], "More expensive than": f.title(), "By": round(f_prices[id_n] - f_prices[id_f], 2)})
         if lb_gaps:
-            st.dataframe(pd.DataFrame(lb_gaps).sort_values('Gap', ascending=False).head(10), 
-                         column_config={"Price": st.column_config.NumberColumn(format="£%.2f"), "Gap": st.column_config.NumberColumn(format="£%.2f")},
+            st.dataframe(pd.DataFrame(lb_gaps).sort_values('By', ascending=False).head(10), 
+                         column_config={"Price": st.column_config.NumberColumn(format="£%.2f"), "By": st.column_config.NumberColumn(format="£%.2f")},
                          use_container_width=True, hide_index=True)
         else:
-            st.info("No Long-Buy Gaps Found!")
+            st.info("No Long-Buying Opportunities Found")
 
     st.divider()
     st.subheader("Full Fare Summary")
@@ -205,4 +205,4 @@ if uploaded_files:
                  column_config={"Original_SDR": st.column_config.NumberColumn("Original", format="£%.2f"), "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f")},
                  use_container_width=True, hide_index=True)
     
-    st.download_button("Download Final Quartz Fares", convert_df_to_csv(df), "Final_Quartz_Fares.csv", "text/csv")
+    st.download_button("Download New Fares", convert_df_to_csv(df), "Final_Quartz_Fares.csv", "text/csv")
