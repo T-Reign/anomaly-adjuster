@@ -244,6 +244,8 @@ if uploaded_files:
                use_container_width=True,
                hide_index=True
            )
+            else:
+            st.info("No Long-Buying Opportunities Found")
             # Count long-buy issues BEFORE optimisation
         lb_before = 0
         for path in SEQUENCES.values():
@@ -267,9 +269,6 @@ if uploaded_files:
             ),
             unsafe_allow_html=True
         )
-        )
-        else:
-            st.info("No Long-Buying Opportunities Found")
 
     st.divider()
     st.subheader("Full Fare Summary")
