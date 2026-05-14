@@ -159,25 +159,22 @@ if uploaded_files:
 with r2c2:
     st.subheader("Remaining Long-Buy Opportunities")
     lb_gaps = []
-
     for path in SEQUENCES.values():
         for i, s in enumerate(path):
-            s_c = s.replace(" ", "")
+            s_c = s.replace(" ","")
             for j, n in enumerate(path[i+1:], i+1):
-                n_c = n.replace(" ", "")
+                n_c = n.replace(" ","")
                 for k, f in enumerate(path[j+1:], j+1):
-                    f_c = f.replace(" ", "")  # <-- FIXED: now defined
+                    f_c = f.replace(" ","")   # FIXED: now defined before use
 
                     id_n = f"{s_c}-{n_c}"     # near station
-                    id_f = f"{s_c}-{f_c}"     # far station (FIXED)
+                    id_f = f"{s_c}-{f_c}"     # far station (correct)
 
                     if id_n in f_prices and id_f in f_prices:
                         if f_prices[id_n] > f_prices[id_f]:
-
-                            # KEEP YOUR ORIGINAL WORDING EXACTLY
                             lb_gaps.append({
                                 "Journey": f"{s.title()}",
-                                "Dest": n.title(),  # <-- unchanged wording
+                                "Dest": n.title(),
                                 "Price": f_prices[id_n],
                                 "More expensive than": f.title(),
                                 "By": round(f_prices[id_n] - f_prices[id_f], 2)
