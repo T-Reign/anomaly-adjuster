@@ -139,26 +139,36 @@ if uploaded_files:
 if slp_enabled:
     final_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
 
+    # First pass: unify fares BEFORE caps
     for mid in list(final_prices.keys()):
         o, d = mid.split("-")
         rev = f"{d}-{o}"
 
         if rev in final_prices:
-            # Take the higher of the two directions
             unified = max(final_prices[mid], final_prices[rev])
-
-            # Apply rounding
             unified = round_up(unified, sdr_rounding)
 
-            # Apply caps
+            final_prices[mid] = unified
+            final_prices[rev] = unified
+
+    # Second pass: apply caps WITHOUT breaking symmetry
+    for mid in list(final_prices.keys()):
+        o, d = mid.split("-")
+        rev = f"{d}-{o}"
+
+        if rev in final_prices:
             cap_mid = df.loc[df['Match_ID'] == mid, 'Ceiling_Price'].values[0]
             floor_mid = df.loc[df['Match_ID'] == mid, 'Floor_Price'].values[0]
 
             cap_rev = df.loc[df['Match_ID'] == rev, 'Ceiling_Price'].values[0]
             floor_rev = df.loc[df['Match_ID'] == rev, 'Floor_Price'].values[0]
 
-            final_prices[mid] = min(max(unified, floor_mid), cap_mid)
-            final_prices[rev] = min(max(unified, floor_rev), cap_rev)
+            # Apply caps to BOTH directions using the strictest limits
+            upper = min(cap_mid, cap_rev)
+            lower = max(floor_mid, floor_rev)
+
+            final_prices[mid] = min(max(final_prices[mid], lower), upper)
+            final_prices[rev] = min(max(final_prices[rev], lower), upper)
 
     df['New_SDR'] = df['Match_ID'].map(final_prices)
 
