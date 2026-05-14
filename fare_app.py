@@ -267,7 +267,6 @@ if uploaded_files:
             ),
             unsafe_allow_html=True
         )
-
         else:
             st.info("No Long-Buying Opportunities Found")
 
