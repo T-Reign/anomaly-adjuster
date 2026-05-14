@@ -164,8 +164,8 @@ if slp_enabled:
             floor_rev = df.loc[df['Match_ID'] == rev, 'Floor_Price'].values[0]
 
             # Apply caps to BOTH directions using the strictest limits
-            upper = min(cap_mid, cap_rev)
-            lower = max(floor_mid, floor_rev)
+            upper = max(cap_mid, cap_rev)
+            lower = min(floor_mid, floor_rev)
 
             final_prices[mid] = min(max(final_prices[mid], lower), upper)
             final_prices[rev] = min(max(final_prices[rev], lower), upper)
