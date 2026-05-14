@@ -65,117 +65,50 @@ uploaded_files = st.sidebar.file_uploader("Upload Fare Spreadsheets", type=["xls
 # --- 3. PROCESSING ---
 if uploaded_files:
     with st.spinner("Calculating Optimised Network..."):
-        all_dfs = [pd.read_excel(f, sheet_name='Main Sheet', header=1) for f in uploaded_files]
-        df = pd.concat(all_dfs, ignore_index=True)
-        df.columns = [str(c).strip() for c in df.columns]
-        
-        # Proper Case Formatting for UI
-        df['Origin Description'] = df.iloc[:, 1].astype(str).str.title().str.strip()
-        df['Destination Description'] = df.iloc[:, 3].astype(str).str.title().str.strip()
-        
-        # Upper Case with No Spaces for Logic Match
-        df['Origin_N'] = df['Origin Description'].str.upper().str.replace(" ", "")
-        df['Dest_N'] = df['Destination Description'].str.upper().str.replace(" ", "")
-        df['Match_ID'] = df['Origin_N'] + "-" + df['Dest_N']
-        
-        df['Original_SDR'] = pd.to_numeric(df.iloc[:, 9], errors='coerce').fillna(0.0)
-        df = df.sort_values('Original_SDR', ascending=False).drop_duplicates(subset=['Match_ID']).copy()
-        
-        # 3.1 Standardization (Highest Directional Fare) & Baseline Rounding
-        raw_price_map = df.set_index('Match_ID')['Original_SDR'].to_dict()
-        
-        def initial_prep(row):
-            parts = row['Match_ID'].split("-")
-            rev_id = f"{parts[1]}-{parts[0]}"
-            highest = max(row['Original_SDR'], raw_price_map.get(rev_id, 0))
-            return round_up(highest, sdr_rounding)
+        ... all your existing processing ...
 
-        df['New_SDR'] = df.apply(initial_prep, axis=1)
-        df['Base_Price'] = df['New_SDR'].copy()
-        df['Ceiling_Price'] = (df['Original_SDR'] * (1 + inc_cap)).apply(lambda x: round_up(x, sdr_rounding))
-        df['Floor_Price'] = (df['Original_SDR'] * (1 - dec_cap)).apply(lambda x: round_up(x, sdr_rounding))
+        df['New_SDR'] = df['Match_ID'].map(curr)
 
-        # Adjacency Map for Splits
-        adj = defaultdict(list)
-        for mid in raw_price_map.keys():
-            o, d = mid.split("-")
-            adj[o].append(d)
+        # --- 3.3 Re‑apply single‑leg pricing AFTER optimisation ---
+        if slp_enabled:
+            final_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
 
-        # 3.2 Optimization Loops (Fixes Splits AND Long-Buys)
-        for _ in range(2):
-            curr = df.set_index('Match_ID')['New_SDR'].to_dict()
-            
-            # PART A: Fix Splits
-            for A in adj:
-                for B in adj[A]:
-                    if B not in adj: continue
-                    for C in adj[B]:
-                        id_ac, id_ab, id_bc = f"{A}-{C}", f"{A}-{B}", f"{B}-{C}"
-                        if id_ac in curr:
-                            thru, s_sum = curr[id_ac], curr[id_ab] + curr.get(id_bc, 9999)
-                            if s_sum < (thru - 0.009):
-                                if id_bc in curr and id_bc not in excluded_splits:
-                                    pot_inc = round_up(curr[id_bc] + (thru - s_sum)/2, sdr_rounding)
-                                    curr[id_bc] = min(pot_inc, df.loc[df['Match_ID']==id_bc, 'Ceiling_Price'].values[0])
-                                if id_ac not in excluded_splits:
-                                    pot_dec = round_up(curr[id_ab] + curr[id_bc], sdr_rounding)
-                                    curr[id_ac] = max(pot_dec, df.loc[df['Match_ID']==id_ac, 'Floor_Price'].values[0])
-            
-            # PART B: Fix Long-Buys
-            for path in SEQUENCES.values():
-                for i, s in enumerate(path):
-                    s_c = s.replace(" ","")
-                    for j, n in enumerate(path[i+1:], i+1):
-                        n_c = n.replace(" ","")
-                        for k, f in enumerate(path[j+1:], j+1):
-                            f_c = f.replace(" ","")
-                            id_near, id_far = f"{s_c}-{n_c}", f"{s_c}-{f_c}"
-                            if id_near in curr and id_far in curr:
-                                if curr[id_near] > curr[id_far] and id_near not in excluded_longbuys:
-                                    curr[id_near] = max(curr[id_far], df.loc[df['Match_ID']==id_near, 'Floor_Price'].values[0])
+            # First pass: unify fares BEFORE caps
+            for mid in list(final_prices.keys()):
+                o, d = mid.split("-")
+                rev = f"{d}-{o}"
 
-            df['New_SDR'] = df['Match_ID'].map(curr)
-# --- 3.3 Re‑apply single‑leg pricing AFTER optimisation ---
-if slp_enabled:
-    final_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
+                if rev in final_prices:
+                    unified = max(final_prices[mid], final_prices[rev])
+                    unified = round_up(unified, sdr_rounding)
 
-    # First pass: unify fares BEFORE caps
-    for mid in list(final_prices.keys()):
-        o, d = mid.split("-")
-        rev = f"{d}-{o}"
+                    final_prices[mid] = unified
+                    final_prices[rev] = unified
 
-        if rev in final_prices:
-            unified = max(final_prices[mid], final_prices[rev])
-            unified = round_up(unified, sdr_rounding)
+            # Second pass: apply caps WITHOUT breaking symmetry
+            for mid in list(final_prices.keys()):
+                o, d = mid.split("-")
+                rev = f"{d}-{o}"
 
-            final_prices[mid] = unified
-            final_prices[rev] = unified
+                if rev in final_prices:
+                    cap_mid = df.loc[df['Match_ID'] == mid, 'Ceiling_Price'].values[0]
+                    floor_mid = df.loc[df['Match_ID'] == mid, 'Floor_Price'].values[0]
 
-    # Second pass: apply caps WITHOUT breaking symmetry
-    for mid in list(final_prices.keys()):
-        o, d = mid.split("-")
-        rev = f"{d}-{o}"
+                    cap_rev = df.loc[df['Match_ID'] == rev, 'Ceiling_Price'].values[0]
+                    floor_rev = df.loc[df['Match_ID'] == rev, 'Floor_Price'].values[0]
 
-        if rev in final_prices:
-            cap_mid = df.loc[df['Match_ID'] == mid, 'Ceiling_Price'].values[0]
-            floor_mid = df.loc[df['Match_ID'] == mid, 'Floor_Price'].values[0]
+                    upper = max(cap_mid, cap_rev)
+                    lower = min(floor_mid, floor_rev)
 
-            cap_rev = df.loc[df['Match_ID'] == rev, 'Ceiling_Price'].values[0]
-            floor_rev = df.loc[df['Match_ID'] == rev, 'Floor_Price'].values[0]
+                    final_prices[mid] = min(max(final_prices[mid], lower), upper)
+                    final_prices[rev] = min(max(final_prices[rev], lower), upper)
 
-            # Apply caps to BOTH directions using the strictest limits
-            upper = max(cap_mid, cap_rev)
-            lower = min(floor_mid, floor_rev)
+            df['New_SDR'] = df['Match_ID'].map(final_prices)
 
-            final_prices[mid] = min(max(final_prices[mid], lower), upper)
-            final_prices[rev] = min(max(final_prices[rev], lower), upper)
-
-    df['New_SDR'] = df['Match_ID'].map(final_prices)
-
-    # UI Calculation
-    df['Diff'] = df['New_SDR'] - df['Original_SDR']
-    df['Opt_Increase'] = df['New_SDR'] - df['Base_Price']
-    df['Status'] = df['Diff'].apply(lambda x: "Increased" if x > 0.01 else ("Decreased" if x < -0.01 else "Unchanged"))
+        # UI Calculation
+        df['Diff'] = df['New_SDR'] - df['Original_SDR']
+        df['Opt_Increase'] = df['New_SDR'] - df['Base_Price']
+        df['Status'] = df['Diff'].apply(lambda x: "Increased" if x > 0.01 else ("Decreased" if x < -0.01 else "Unchanged"))
 
     # --- 4. DASHBOARD ---
     st.divider()
