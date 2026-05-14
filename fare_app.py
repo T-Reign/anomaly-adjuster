@@ -159,7 +159,6 @@ for mid in list(final_prices.keys()):
         final_prices[rev] = min(max(unified, floor_rev), cap_rev)
 
 df['New_SDR'] = df['Match_ID'].map(final_prices)
-
     # UI Calculation
     df['Diff'] = df['New_SDR'] - df['Original_SDR']
     df['Opt_Increase'] = df['New_SDR'] - df['Base_Price']
