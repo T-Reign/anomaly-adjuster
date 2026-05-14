@@ -97,8 +97,6 @@ if uploaded_files:
         # Adjacency Map for Splits
         adj = defaultdict(list)
         for mid in raw_price_map.keys():
-            if "-" not in mid:
-                continue  # skip malformed IDs
             o, d = mid.split("-")
             adj[o].append(d)
 
@@ -180,46 +178,26 @@ if uploaded_files:
                          use_container_width=True, hide_index=True)
         else:
             st.success("No Split-Ticket Opportunities Found")
-           
-        with r2c2:
-            st.subheader("Remaining Long-Buy Opportunities")
-            lb_gaps = []
 
-            for path in SEQUENCES.values():
-                for i, s in enumerate(path):
-                    s_c = s.replace(" ", "")
-                    for j, n in enumerate(path[i+1:], i+1):
-                        n_c = n.replace(" ", "")
-                        for k, f in enumerate(path[j+1:], j+1):
-                            f_c = f.replace(" ", "")  # FIXED: now defined
-
-                            id_n = f"{s_c}-{n_c}"     # near station
-                            id_f = f"{s_c}-{f_c}"     # far station (correct)
-
-                            if id_n in f_prices and id_f in f_prices:
-                                if f_prices[id_n] > f_prices[id_f]:
-
-                                    # KEEP YOUR ORIGINAL WORDING EXACTLY
-                                    lb_gaps.append({
-                                        "Journey": f"{s.title()}",
-                                        "Dest": n.title(),
-                                        "Price": f_prices[id_n],
-                                        "More expensive than": f.title(),
-                                        "By": round(f_prices[id_n] - f_prices[id_f], 2)
-                                    })
-
-            if lb_gaps:
-                st.dataframe(
-                    pd.DataFrame(lb_gaps).sort_values('By', ascending=False).head(10),
-                    column_config={
-                        "Price": st.column_config.NumberColumn(format="£%.2f"),
-                        "By": st.column_config.NumberColumn(format="£%.2f")
-                    },
-                    use_container_width=True,
-                    hide_index=True
-                )
-            else:
-                st.info("No Long-Buying Opportunities Found")
+    with r2c2:
+        st.subheader("Remaining Long-Buy Opportunities")
+        lb_gaps = []
+        for path in SEQUENCES.values():
+            for i, s in enumerate(path):
+                s_c = s.replace(" ","")
+                for j, n in enumerate(path[i+1:], i+1):
+                    n_c = n.replace(" ","")
+                    for k, f in enumerate(path[j+1:], j+1):
+                        id_n, id_f = f"{s_c}-{n_c}", f"{s_c}-{f_c}"
+                        if id_n in f_prices and id_f in f_prices:
+                            if f_prices[id_n] > f_prices[id_f]:
+                                lb_gaps.append({"Journey": f"{s.title()}", "Dest": n.title(), "Price": f_prices[id_n], "More expensive than": f.title(), "By": round(f_prices[id_n] - f_prices[id_f], 2)})
+        if lb_gaps:
+            st.dataframe(pd.DataFrame(lb_gaps).sort_values('By', ascending=False).head(10), 
+                         column_config={"Price": st.column_config.NumberColumn(format="£%.2f"), "By": st.column_config.NumberColumn(format="£%.2f")},
+                         use_container_width=True, hide_index=True)
+        else:
+            st.info("No Long-Buying Opportunities Found")
 
     st.divider()
     st.subheader("Full Fare Summary")
