@@ -135,30 +135,6 @@ if uploaded_files:
                                     curr[id_near] = max(curr[id_far], df.loc[df['Match_ID']==id_near, 'Floor_Price'].values[0])
 
             df['New_SDR'] = df['Match_ID'].map(curr)
-    # --- 3.3 Re‑apply single‑leg pricing AFTER optimisation ---
-    if slp_enabled:
-        final_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
-
-        for mid in list(final_prices.keys()):
-            o, d = mid.split("-")
-            rev = f"{d}-{o}"
-
-            if rev in final_prices:
-                # Take the higher of the two directions
-                unified = max(final_prices[mid], final_prices[rev])
-
-                # Apply rounding
-                unified = round_up(unified, sdr_rounding)
-
-                # Apply caps
-                cap_mid = df.loc[df['Match_ID'] == mid, 'Ceiling_Price'].values[0]
-                floor_mid = df.loc[df['Match_ID'] == mid, 'Floor_Price'].values[0]
-
-                cap_rev = df.loc[df['Match_ID'] == rev, 'Ceiling_Price'].values[0]
-                floor_rev = df.loc[df['Match_ID'] == rev, 'Floor_Price'].values[0]
-
-                final_prices[mid] = min(max(unified, floor_mid), cap_mid)
-                final_prices[rev] = min(max(unified, floor_rev), cap_rev)
 
     df['New_SDR'] = df['Match_ID'].map(final_prices)
 
