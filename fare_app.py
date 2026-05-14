@@ -173,7 +173,7 @@ if uploaded_files:
                         if thru > (s_sum + 0.01):
                             gaps.append({"Journey": f"{n_map.get(A, A)} to {n_map.get(C, C)}", "Split At": n_map.get(B, B), "New Fare": thru, "Split Fare": s_sum, "Difference": round(thru - s_sum, 2)})
         if gaps:
-            st.dataframe(pd.DataFrame(gaps).sort_values('Difference', ascending=False).head(10), 
+            st.dataframe(pd.DataFrame(gaps).sort_values('Difference', ascending=False).head(20), 
                          column_config={"New Fare": st.column_config.NumberColumn(format="£%.2f"), "Split Fare": st.column_config.NumberColumn(format="£%.2f"), "Difference": st.column_config.NumberColumn(format="£%.2f")},
                          use_container_width=True, hide_index=True)
         else:
@@ -211,7 +211,7 @@ if uploaded_files:
 
         if lb_gaps:
            st.dataframe(
-               pd.DataFrame(lb_gaps).sort_values("Difference", ascending=False).head(10),
+               pd.DataFrame(lb_gaps).sort_values("Difference", ascending=False).head(20),
                column_config={
                    "Price to Intended": st.column_config.NumberColumn(format="£%.2f"),
                    "Price to Following Stn": st.column_config.NumberColumn(format="£%.2f"),
