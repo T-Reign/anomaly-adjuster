@@ -197,8 +197,11 @@ if uploaded_files:
         split_solved = split_before - split_after
 
         st.markdown(
-            f"**Split-ticket issues solved:** {split_solved}  
-             **Remaining:** {split_after}"
+            (
+                f"**Split-ticket issues solved:** {split_solved}<br>"
+                f"**Remaining:** {split_after}"
+            ),
+            unsafe_allow_html=True
         )
     with r2c2:
         st.subheader("Remaining Long-Buying Opportunities")
@@ -258,9 +261,13 @@ if uploaded_files:
             lb_solved = lb_before - lb_after
 
             st.markdown(
-                f"**Long-buy issues solved:** {lb_solved}  
-                 **Remaining:** {lb_after}"
-             )
+                (
+                    f"**Long-buy issues solved:** {lb_solved}<br>"
+                    f"**Remaining:** {lb_after}"
+                ),
+                unsafe_allow_html=True
+            )
+
         else:
             st.info("No Long-Buying Opportunities Found")
 
