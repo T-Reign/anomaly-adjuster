@@ -245,28 +245,28 @@ if uploaded_files:
                hide_index=True
            )
             # Count long-buy issues BEFORE optimisation
-            lb_before = 0
-            for path in SEQUENCES.values():
-                clean = [p.replace(" ", "") for p in path]
-                for i, s in enumerate(clean):
-                    for j, n in enumerate(clean[i+1:], i+1):
-                        id_sn = f"{s}-{n}"
-                        for k, f in enumerate(clean[j+1:], j+1):
-                            id_sf = f"{s}-{f}"
-                            if id_sn in base_prices and id_sf in base_prices:
-                                if base_prices[id_sn] > base_prices[id_sf] + 0.01:
+        lb_before = 0
+        for path in SEQUENCES.values():
+            clean = [p.replace(" ", "") for p in path]
+            for i, s in enumerate(clean):
+                for j, n in enumerate(clean[i+1:], i+1):
+                    id_sn = f"{s}-{n}"
+                    for k, f in enumerate(clean[j+1:], j+1):
+                        id_sf = f"{s}-{f}"
+                        if id_sn in base_prices and id_sf in base_prices:
+                            if base_prices[id_sn] > base_prices[id_sf] + 0.01:
                                     lb_before += 1
 
-            lb_after = len(lb_gaps)
-            lb_solved = lb_before - lb_after
+        lb_after = len(lb_gaps)
+        lb_solved = lb_before - lb_after
 
-            st.markdown(
-                (
-                    f"**Long-buy issues solved:** {lb_solved}<br>"
-                    f"**Remaining:** {lb_after}"
-                ),
-                unsafe_allow_html=True
-            )
+        st.markdown(
+            (
+                f"**Long-buy issues solved:** {lb_solved}<br>"
+                f"**Remaining:** {lb_after}"
+            ),
+            unsafe_allow_html=True
+        )
 
         else:
             st.info("No Long-Buying Opportunities Found")
