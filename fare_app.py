@@ -87,6 +87,10 @@ if uploaded_files:
         # Keep original casing for display, create uppercase versions purely for background matching
         df['Origin Description'] = df.iloc[:, 1].astype(str).str.strip()
         df['Destination Description'] = df.iloc[:, 3].astype(str).str.strip()
+
+        # Create a display mapping dictionary that preserves original Excel casing perfectly
+        display_origin_map = df.set_index('Origin_N')['Origin Description'].to_dict()
+        display_dest_map = df.set_index('Dest_N')['Destination Description'].to_dict()
         
         df['Origin_N'] = df['Origin Description'].str.upper().str.replace(" ", "")
         df['Dest_N'] = df['Destination Description'].str.upper().str.replace(" ", "")
@@ -241,7 +245,6 @@ if uploaded_files:
     with r2c1:
         st.subheader("Remaining Split-Ticketing Opportunities")
         f_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
-        n_map = df.set_index('Origin_N')['Origin Description'].to_dict()
         gaps = []
         for A in adj:
             for B in adj[A]:
@@ -251,7 +254,7 @@ if uploaded_files:
                     if id_ac in f_prices:
                         thru, s_sum = f_prices[id_ac], f_prices[id_ab] + f_prices.get(id_bc, 0)
                         if thru > (s_sum + 0.01):
-                            gaps.append({"Journey": f"{n_map.get(A, A)} to {n_map.get(C, C)}", "Split At": n_map.get(B, B), "New Fare": thru, "Split Fare": s_sum, "Difference": round(thru - s_sum, 2)})
+                            gaps.append({"Journey": f"{display_origin_map.get(A, A)} to {display_dest_map.get(C, C)}", "Split At": display_origin_map.get(B, B), "New Fare": thru, "Split Fare": s_sum, "Difference": round(thru - s_sum, 2)})
         if gaps:
             st.dataframe(pd.DataFrame(gaps).sort_values('Difference', ascending=False).head(300), 
                          column_config={"New Fare": st.column_config.NumberColumn(format="£%.2f"), "Split Fare": st.column_config.NumberColumn(format="£%.2f"), "Difference": st.column_config.NumberColumn(format="£%.2f")},
@@ -305,9 +308,9 @@ if uploaded_files:
 
                             if near > far + 0.01:
                                 lb_gaps.append({
-                                    "Origin(A)": path[i].title(),
-                                    "Destination(B)": path[j].title(),
-                                    "Following Stn(C)": path[k].title(),
+                                    "Origin(A)": display_origin_map.get(s, path[i]),
+                                    "Destination(B)": display_dest_map.get(j_clean, path[j]), # matching the loop index token
+                                    "Following Stn(C)": display_dest_map.get(k_clean, path[k]),
                                     "Price to B": near,
                                     "Price to C": far,
                                     "Difference": round(near - far, 2)
