@@ -73,7 +73,6 @@ if uploaded_files:
             all_dfs.append(df_main)
             
             # 2. Read Journeys & Revenue Sheet 
-            # Note: Change sheet_name='Journeys and Revenue' if your Excel tab is named differently
             try:
                 df_jr_raw = pd.read_excel(f, sheet_name='Journeys and Revenue')
                 all_jr_dfs.append(df_jr_raw)
@@ -84,10 +83,11 @@ if uploaded_files:
         df = pd.concat(all_dfs, ignore_index=True)
         df.columns = [str(c).strip() for c in df.columns]
         
-        # Keep original casing for display, create uppercase versions purely for background matching
-        df['Origin Description'] = df.iloc[:, 1].astype(str).str.strip()
-        df['Destination Description'] = df.iloc[:, 3].astype(str).str.strip()
+        # --- FIXED STEP 1: Transform to Title Case early to cascade down to all tables automatically
+        df['Origin Description'] = df.iloc[:, 1].astype(str).str.strip().str.title()
+        df['Destination Description'] = df.iloc[:, 3].astype(str).str.strip().str.title()
         
+        # --- FIXED STEP 2: Create columns in correct hierarchical execution order
         df['Origin_N'] = df['Origin Description'].str.upper().str.replace(" ", "")
         df['Dest_N'] = df['Destination Description'].str.upper().str.replace(" ", "")
         df['Match_ID'] = df['Origin_N'] + "-" + df['Dest_N']
@@ -114,14 +114,13 @@ if uploaded_files:
                 '2ADA': 'CDS', 'ADA': 'CDS',
                 '2BDY': 'CDR',
                 '2MQA': '7DF', '1MQA': '7DF',
-                '2BHA': 'CDR', '2HYV': 'CDR',  # EVB & SUB map to CDR
-                '2ADO': 'CDS', '2HYU': 'CDS'   # EVA maps to CDS
+                '2BHA': 'CDR', '2HYV': 'CDR',
+                '2ADO': 'CDS', '2HYU': 'CDS'
             }
             
             df_jr['Product_Clean'] = df_jr['Product Code'].astype(str).str.strip().str.upper()
             df_jr['Standard_Product'] = df_jr['Product_Clean'].map(product_mapping)
             
-            # Safeguard: Coerce non-numeric string data (like '#NUM!') safely into zeros
             df_jr['JOURNEYS'] = pd.to_numeric(df_jr['JOURNEYS'], errors='coerce').fillna(0)
             df_jr['REVENUE'] = pd.to_numeric(df_jr['REVENUE'], errors='coerce').fillna(0.0)
             
@@ -155,7 +154,6 @@ if uploaded_files:
             parts = row['Match_ID'].split("-")
             rev_id = f"{parts[1]}-{parts[0]}"
             highest = max(row['Original_SDR'], raw_price_map.get(rev_id, 0))
-            # Standardize immediately if SLP is enabled, otherwise use original
             val = highest if slp_enabled else row['Original_SDR']
             return round_up(val, sdr_rounding)
 
@@ -198,7 +196,7 @@ if uploaded_files:
                             if id_near in curr and id_far in curr:
                                 if curr[id_near] > curr[id_far] and id_near not in excluded_longbuys:
                                     curr[id_near] = max(curr[id_far], df.loc[df['Match_ID']==id_near, 'Floor_Price'].values[0])
-            df['New_SDR'] = df['Match_ID'].map(curr)
+        df['New_SDR'] = df['Match_ID'].map(curr)
 
         # Final Symmetry Check (SLP)
         if slp_enabled:
@@ -208,7 +206,6 @@ if uploaded_files:
                 rev = f"{d}-{o}"
                 if rev in final_prices:
                     unified = max(final_prices[mid], final_prices[rev])
-                    # Re-check caps
                     c1, f1 = df.loc[df['Match_ID']==mid, ['Ceiling_Price','Floor_Price']].values[0]
                     c2, f2 = df.loc[df['Match_ID']==rev, ['Ceiling_Price','Floor_Price']].values[0]
                     final_val = min(max(unified, min(f1, f2)), max(c1, c2))
@@ -220,7 +217,7 @@ if uploaded_files:
         df['Opt_Increase'] = df['New_SDR'] - df['Base_Price']
         df['Status'] = df['Diff'].apply(lambda x: "Increased" if x > 0.01 else ("Decreased" if x < -0.01 else "Unchanged"))
 
-        # --- 4. DASHBOARD (Inside the "if uploaded_files" block) ---
+        # --- 4. DASHBOARD ---
         st.divider()
         r1c1, r1c2 = st.columns(2)
         with r1c1:
@@ -241,6 +238,8 @@ if uploaded_files:
     with r2c1:
         st.subheader("Remaining Split-Ticketing Opportunities")
         f_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
+        
+        # --- FIXED STEP 3: Dictionaries now map directly to Title Case strings
         n_map = df.set_index('Origin_N')['Origin Description'].to_dict()
         gaps = []
         for A in adj:
@@ -251,15 +250,25 @@ if uploaded_files:
                     if id_ac in f_prices:
                         thru, s_sum = f_prices[id_ac], f_prices[id_ab] + f_prices.get(id_bc, 0)
                         if thru > (s_sum + 0.01):
-                            gaps.append({"Journey": f"{n_map.get(A, A)} to {n_map.get(C, C)}", "Split At": n_map.get(B, B), "New Fare": thru, "Split Fare": s_sum, "Difference": round(thru - s_sum, 2)})
+                            # Safe fallback formatting with string transformation to guarantee title casing
+                            origin_label = str(n_map.get(A, A)).title()
+                            dest_label = str(n_map.get(C, C)).title()
+                            split_label = str(n_map.get(B, B)).title()
+                            
+                            gaps.append({
+                                "Journey": f"{origin_label} to {dest_label}", 
+                                "Split At": split_label, 
+                                "New Fare": thru, 
+                                "Split Fare": s_sum, 
+                                "Difference": round(thru - s_sum, 2)
+                            })
         if gaps:
             st.dataframe(pd.DataFrame(gaps).sort_values('Difference', ascending=False).head(300), 
                          column_config={"New Fare": st.column_config.NumberColumn(format="£%.2f"), "Split Fare": st.column_config.NumberColumn(format="£%.2f"), "Difference": st.column_config.NumberColumn(format="£%.2f")},
                          use_container_width=True, hide_index=True)
         else:
             st.success("No Split-Ticket Opportunities Found")
-        # Count how many split-ticket issues existed before optimisation
-        # (same logic as your detection loop, but using Base_Price instead of New_SDR)
+            
         base_prices = df.set_index('Match_ID')['Base_Price'].to_dict()
         split_before = 0
         for A in adj:
@@ -289,7 +298,6 @@ if uploaded_files:
         lb_gaps = []
 
         for path in SEQUENCES.values():
-            # Clean station names for ID matching
             clean_path = [p.replace(" ", "") for p in path]
 
             for i, s in enumerate(clean_path):
@@ -326,7 +334,7 @@ if uploaded_files:
            )
         else:
             st.info("No Long-Buying Opportunities Found")
-            # Count long-buy issues BEFORE optimisation
+            
         lb_before = 0
         for path in SEQUENCES.values():
             clean = [p.replace(" ", "") for p in path]
@@ -353,7 +361,7 @@ if uploaded_files:
     st.divider()
     st.subheader("Full Fare Summary")
     st.dataframe(df[['Origin Description', 'Destination Description', 'Original_SDR', 'New_SDR', 'Status']], 
-                     column_config={"Original_SDR": st.column_config.NumberColumn("Original", format="£%.2f"), "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f")},
-                     use_container_width=True, hide_index=True)
+                 column_config={"Original_SDR": st.column_config.NumberColumn("Original", format="£%.2f"), "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f")},
+                 use_container_width=True, hide_index=True)
         
     st.download_button("Download New Fares", convert_df_to_csv(df), "Final_Quartz_Fares.csv", "text/csv")
