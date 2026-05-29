@@ -86,11 +86,10 @@ if uploaded_files:
         
         # Keep original casing for display, create uppercase versions purely for background matching
         df['Origin Description'] = df.iloc[:, 1].astype(str).str.strip()
+        # Clean station name token spaces
+        df['Origin Description'] = df['Origin Description'].replace(r'\s+', ' ', regex=True)
         df['Destination Description'] = df.iloc[:, 3].astype(str).str.strip()
-
-        # Create a display mapping dictionary that preserves original Excel casing perfectly
-        display_origin_map = df.set_index('Origin_N')['Origin Description'].to_dict()
-        display_dest_map = df.set_index('Dest_N')['Destination Description'].to_dict()
+        df['Destination Description'] = df['Destination Description'].replace(r'\s+', ' ', regex=True)
         
         df['Origin_N'] = df['Origin Description'].str.upper().str.replace(" ", "")
         df['Dest_N'] = df['Destination Description'].str.upper().str.replace(" ", "")
