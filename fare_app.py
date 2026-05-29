@@ -58,6 +58,10 @@ slp_enabled = st.sidebar.checkbox("Enable Single-Leg Pricing", value=True)
 sdr_rounding = st.sidebar.select_slider("Rounding (£)", options=[0.00, 0.05, 0.10, 0.20, 0.50, 1.00], value=0.20)
 inc_cap = st.sidebar.slider("Maximum Increase (cap) (%)", 0, 70, 8) / 100
 dec_cap = st.sidebar.slider("Maximum Decrease (cap) (%)", 0, 70, 5) / 100
+st.sidebar.markdown("---")
+st.sidebar.subheader("Low-Volume Adjustments")
+low_vol_threshold = st.sidebar.number_input("Low Volume Threshold (Journeys)", value=1000, step=100)
+low_vol_action = st.sidebar.radio("Action for low-volume flows:", ["Double the Cap", "Ignore the Cap Completely"])
 sdr_elasticity = st.sidebar.slider("SDR Demand Elasticity", -2.0, 0.0, -0.6, step=0.05)
 
 uploaded_files = st.sidebar.file_uploader("Upload Fare Spreadsheets", type=["xlsx"], accept_multiple_files=True)
@@ -160,7 +164,21 @@ if uploaded_files:
 
         df['New_SDR'] = df.apply(initial_prep, axis=1)
         df['Base_Price'] = df['New_SDR'].copy()
-        df['Ceiling_Price'] = (df['Original_SDR'] * (1 + inc_cap)).apply(lambda x: round_up(x, sdr_rounding))
+        # --- NEW DYNAMIC CEILING LOGIC ---
+        def calculate_ceiling(row):
+            # Check if this route is considered "low volume" based on total journeys
+            if row['Total_Journeys'] < low_vol_threshold:
+                if low_vol_action == "Ignore the Cap Completely":
+                    return 9999.0  # Set an effectively infinite ceiling so it never limits the increase
+                else:
+                    effective_cap = inc_cap * 2  # Double the increase cap
+            else:
+                effective_cap = inc_cap  # Keep standard cap for high-volume routes
+                
+            raw_ceiling = row['Original_SDR'] * (1 + effective_cap)
+            return round_up(raw_ceiling, sdr_rounding)
+
+        df['Ceiling_Price'] = df.apply(calculate_ceiling, axis=1)
         df['Floor_Price'] = (df['Original_SDR'] * (1 - dec_cap)).apply(lambda x: round_up(x, sdr_rounding))
 
         adj = defaultdict(list)
