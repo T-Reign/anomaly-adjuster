@@ -188,11 +188,11 @@ if uploaded_files:
                                     curr[id_ac] = max(pot_dec, df.loc[df['Match_ID']==id_ac, 'Floor_Price'].values[0])
             
             for path in SEQUENCES.values():
-                for i, s in enumerate(path):
+                for i, s in enumerate(clean_path):
                     s_c = s.replace(" ","")
-                    for j, n in enumerate(path[i+1:], i+1):
+                    for j, n in enumerate(clean_path[i+1:], i+1):
                         n_c = n.replace(" ","")
-                        for k, f in enumerate(path[j+1:], j+1):
+                        for k, f in enumerate(clean_path[j+1:], j+1):
                             f_c = f.replace(" ","")
                             id_near, id_far = f"{s_c}-{n_c}", f"{s_c}-{f_c}"
                             if id_near in curr and id_far in curr:
