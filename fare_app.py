@@ -61,7 +61,7 @@ sdr_rounding = st.sidebar.select_slider("Rounding (£)", options=[0.01, 0.05, 0.
 
 uploaded_files = st.sidebar.file_uploader("Upload Fare Spreadsheets", type=["xlsx"], accept_multiple_files=True)
 
-# --- 3. PROCESSING ---
+        # --- 3. PROCESSING ---
 if uploaded_files:
     with st.spinner("Calculating Optimised Network & Merging Revenue..."):
         all_dfs = []
