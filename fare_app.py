@@ -387,7 +387,7 @@ if uploaded_files:
         journey_changes = df[df['Diff'].abs() > 0.01].sort_values('SDR_Journeys', ascending=False).head(10)
         st.dataframe(journey_changes[['Origin Description', 'Destination Description', 'SDR_Journeys', 'Original_SDR', 'New_SDR', 'Diff']], 
                      column_config={
-                         "SDR_Journeys": st.column_config.NumberColumn("Journeys Affected", format="%,3d"), 
+                         "SDR_Journeys": st.column_config.NumberColumn("Journeys Affected", format="%,d"), 
                          "Original_SDR": st.column_config.NumberColumn("Original Fare", format="£%.2f"), 
                          "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f"), 
                          "Diff": st.column_config.NumberColumn("Price Change", format="£%.2f")
@@ -401,9 +401,9 @@ if uploaded_files:
         revenue_changes = df.sort_values('Abs_Revenue_Impact', ascending=False).head(10)
         st.dataframe(revenue_changes[['Origin Description', 'Destination Description', 'SDR_Journeys', 'Diff', 'Revenue_Impact']], 
                      column_config={
-                         "SDR_Journeys": st.column_config.NumberColumn("SDR Volume", format="%d"), 
+                         "SDR_Journeys": st.column_config.NumberColumn("SDR Volume", format="%,d"), 
                          "Diff": st.column_config.NumberColumn("Price Change", format="£%.2f"), 
-                         "Revenue_Impact": st.column_config.NumberColumn("Revenue Impact", format="£%.2f")
+                         "Revenue_Impact": st.column_config.NumberColumn("Revenue Impact", format="£%,d")
                      },
                      use_container_width=True, hide_index=True)
 
