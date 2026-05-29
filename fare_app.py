@@ -216,6 +216,10 @@ if uploaded_files:
         df['Diff'] = df['New_SDR'] - df['Original_SDR']
         df['Opt_Increase'] = df['New_SDR'] - df['Base_Price']
         df['Status'] = df['Diff'].apply(lambda x: "Increased" if x > 0.01 else ("Decreased" if x < -0.01 else "Unchanged"))
+        
+        # --- NEW IMPACT CALCULATIONS ---
+        df['Revenue_Impact'] = df['SDR_Journeys'] * df['Diff']
+        df['Abs_Revenue_Impact'] = df['Revenue_Impact'].abs()
 
         # --- 4. DASHBOARD ---
         st.divider()
@@ -357,6 +361,36 @@ if uploaded_files:
             ),
             unsafe_allow_html=True
         )
+
+    # --- NEW ROW 3: JOURNEY & REVENUE IMPACT TABLES ---
+    st.divider()
+    r3c1, r3c2 = st.columns(2)
+    with r3c1:
+        st.subheader("Biggest Journey Changes")
+        st.caption("Flows with price changes affecting the highest volume of SDR journeys")
+        # Filter for rows where a price change exists, then pull the highest SDR volumes
+        journey_changes = df[df['Diff'].abs() > 0.01].sort_values('SDR_Journeys', ascending=False).head(10)
+        st.dataframe(journey_changes[['Origin Description', 'Destination Description', 'SDR_Journeys', 'Original_SDR', 'New_SDR', 'Diff']], 
+                     column_config={
+                         "SDR_Journeys": st.column_config.NumberColumn("Journeys Affected", format="%d"), 
+                         "Original_SDR": st.column_config.NumberColumn("Original Fare", format="£%.2f"), 
+                         "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f"), 
+                         "Diff": st.column_config.NumberColumn("Price Change", format="£%.2f")
+                     },
+                     use_container_width=True, hide_index=True)
+                     
+    with r3c2:
+        st.subheader("Biggest Revenue Changes")
+        st.caption("Flows with the largest overall financial impact (SDR Volume × Price Change)")
+        # Sort by absolute revenue impact to bring major gains and drops to the top
+        revenue_changes = df.sort_values('Abs_Revenue_Impact', ascending=False).head(10)
+        st.dataframe(revenue_changes[['Origin Description', 'Destination Description', 'SDR_Journeys', 'Diff', 'Revenue_Impact']], 
+                     column_config={
+                         "SDR_Journeys": st.column_config.NumberColumn("SDR Volume", format="%d"), 
+                         "Diff": st.column_config.NumberColumn("Price Change", format="£%.2f"), 
+                         "Revenue_Impact": st.column_config.NumberColumn("Revenue Impact", format="£%.2f")
+                     },
+                     use_container_width=True, hide_index=True)
 
     st.divider()
     st.subheader("Full Fare Summary")
