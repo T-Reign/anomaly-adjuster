@@ -58,6 +58,7 @@ slp_enabled = st.sidebar.checkbox("Enable Single-Leg Pricing", value=True)
 inc_cap = st.sidebar.slider("Maximum Increase (cap) (%)", 0, 70, 8) / 100
 dec_cap = st.sidebar.slider("Maximum Decrease (cap) (%)", 0, 70, 5) / 100
 sdr_rounding = st.sidebar.select_slider("Rounding (£)", options=[0.01, 0.05, 0.10, 0.20, 0.50, 1.00], value=0.20)
+sdr_elasticity = st.sidebar.slider("SDR Demand Elasticity", -2.0, 0.0, -0.6, step=0.1)
 
 uploaded_files = st.sidebar.file_uploader("Upload Fare Spreadsheets", type=["xlsx"], accept_multiple_files=True)
 
@@ -218,7 +219,21 @@ if uploaded_files:
         df['Status'] = df['Diff'].apply(lambda x: "Increased" if x > 0.01 else ("Decreased" if x < -0.01 else "Unchanged"))
         
         # --- NEW IMPACT CALCULATIONS ---
-        df['Revenue_Impact'] = df['SDR_Journeys'] * df['Diff']
+        # 1. Prevent division by zero if an original fare is £0
+        safe_orig_fare = df['Original_SDR'].replace(0, 1)
+        
+        # 2. Calculate the % change in price
+        df['Price_Pct_Change'] = df['Diff'] / safe_orig_fare
+        
+        # 3. Apply elasticity to calculate the new passenger volume
+        df['Predicted_SDR_Journeys'] = df['SDR_Journeys'] * (1 + (sdr_elasticity * df['Price_Pct_Change']))
+        df['Predicted_SDR_Journeys'] = df['Predicted_SDR_Journeys'].clip(lower=0) # Volume can't drop below 0
+        
+        # 4. Revenue Impact = (New Volume × New Fare) - (Old Volume × Old Fare)
+        df['Old_SDR_Revenue'] = df['SDR_Journeys'] * df['Original_SDR']
+        df['New_SDR_Revenue'] = df['Predicted_SDR_Journeys'] * df['New_SDR']
+        
+        df['Revenue_Impact'] = df['New_SDR_Revenue'] - df['Old_SDR_Revenue']
         df['Abs_Revenue_Impact'] = df['Revenue_Impact'].abs()
 
         # --- 4. DASHBOARD ---
