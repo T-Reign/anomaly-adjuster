@@ -63,13 +63,31 @@ uploaded_files = st.sidebar.file_uploader("Upload Fare Spreadsheets", type=["xls
 
 # --- 3. PROCESSING ---
 if uploaded_files:
-    with st.spinner("Calculating Optimised Network..."):
-        all_dfs = [pd.read_excel(f, sheet_name='Main Sheet', header=1) for f in uploaded_files]
+    with st.spinner("Calculating Optimised Network & Merging Revenue..."):
+        all_dfs = []
+        all_jr_dfs = []
+        
+        for f in uploaded_files:
+            # 1. Read Main Sheet for Fares
+            df_main = pd.read_excel(f, sheet_name='Main Sheet', header=1)
+            all_dfs.append(df_main)
+            
+            # 2. Read Journeys & Revenue Sheet 
+            # Note: Change sheet_name='Journeys and Revenue' if your Excel tab is named differently
+            try:
+                df_jr_raw = pd.read_excel(f, sheet_name='Journeys and Revenue')
+                all_jr_dfs.append(df_jr_raw)
+            except Exception as e:
+                st.error(f"Could not find 'Journeys and Revenue' sheet in {f.name}. Please ensure the sheet name matches exactly.")
+
+        # Combine Fare Data
         df = pd.concat(all_dfs, ignore_index=True)
         df.columns = [str(c).strip() for c in df.columns]
         
-        df['Origin Description'] = df.iloc[:, 1].astype(str).str.title().str.strip()
-        df['Destination Description'] = df.iloc[:, 3].astype(str).str.title().str.strip()
+        # Keep original casing for display, create uppercase versions purely for background matching
+        df['Origin Description'] = df.iloc[:, 1].astype(str).str.strip()
+        df['Destination Description'] = df.iloc[:, 3].astype(str).str.strip()
+        
         df['Origin_N'] = df['Origin Description'].str.upper().str.replace(" ", "")
         df['Dest_N'] = df['Destination Description'].str.upper().str.replace(" ", "")
         df['Match_ID'] = df['Origin_N'] + "-" + df['Dest_N']
@@ -78,76 +96,62 @@ if uploaded_files:
         df = df.sort_values('Original_SDR', ascending=False).drop_duplicates(subset=['Match_ID']).copy()
         
         raw_price_map = df.set_index('Match_ID')['Original_SDR'].to_dict()
-        
+
+        # Combine and Process Journeys & Revenue Data
+        if all_jr_dfs:
+            df_jr = pd.concat(all_jr_dfs, ignore_index=True)
+            df_jr.columns = [str(c).strip() for c in df_jr.columns]
+            
+            # Match tokens behind the scenes using uppercase/no spaces
+            df_jr['Origin_N'] = df_jr['True Origin Description'].astype(str).str.upper().str.replace(" ", "")
+            df_jr['Dest_N'] = df_jr['True Destination Description'].astype(str).str.upper().str.replace(" ", "")
+            df_jr['Match_ID'] = df_jr['Origin_N'] + "-" + df_jr['Dest_N']
+            
+            # Product code normalization
+            product_mapping = {
+                '2BAF': 'SDR', '1BAF': 'SDR',
+                '2AAA': 'SDS', '1AAA': 'SDS',
+                '2ADA': 'CDS', 'ADA': 'CDS',
+                '2BDY': 'CDR',
+                '2MQA': '7DF', '1MQA': '7DF',
+                '2BHA': 'CDR', '2HYV': 'CDR',  # EVB & SUB map to CDR
+                '2ADO': 'CDS', '2HYU': 'CDS'   # EVA maps to CDS
+            }
+            
+            df_jr['Product_Clean'] = df_jr['Product Code'].astype(str).str.strip().str.upper()
+            df_jr['Standard_Product'] = df_jr['Product_Clean'].map(product_mapping)
+            
+            # Safeguard: Coerce non-numeric string data (like '#NUM!') safely into zeros
+            df_jr['JOURNEYS'] = pd.to_numeric(df_jr['JOURNEYS'], errors='coerce').fillna(0)
+            df_jr['REVENUE'] = pd.to_numeric(df_jr['REVENUE'], errors='coerce').fillna(0.0)
+            
+            # Metric 1: Total Volume across ALL ticket types (for volume filtering)
+            total_jr_summary = df_jr.groupby('Match_ID')['JOURNEYS'].sum().reset_index()
+            total_jr_summary.columns = ['Match_ID', 'Total_Journeys']
+            
+            # Metric 2: Specific SDR Volume and Revenue (for elasticity later)
+            df_sdr_jr = df_jr[df_jr['Standard_Product'] == 'SDR']
+            sdr_jr_summary = df_sdr_jr.groupby('Match_ID').agg({
+                'JOURNEYS': 'sum',
+                'REVENUE': 'sum'
+            }).reset_index()
+            sdr_jr_summary.columns = ['Match_ID', 'SDR_Journeys', 'SDR_Revenue']
+            
+            # Merge both sets of data into the main fares list
+            df = df.merge(total_jr_summary, on='Match_ID', how='left')
+            df = df.merge(sdr_jr_summary, on='Match_ID', how='left')
+            
+            # Fill missing flows with zero values
+            df['Total_Journeys'] = df['Total_Journeys'].fillna(0)
+            df['SDR_Journeys'] = df['SDR_Journeys'].fillna(0)
+            df['SDR_Revenue'] = df['SDR_Revenue'].fillna(0.0)
+        else:
+            df['Total_Journeys'] = 0
+            df['SDR_Journeys'] = 0
+            df['SDR_Revenue'] = 0.0
+
         # Initial preparation
         def initial_prep(row):
-            parts = row['Match_ID'].split("-")
-            rev_id = f"{parts[1]}-{parts[0]}"
-            highest = max(row['Original_SDR'], raw_price_map.get(rev_id, 0))
-            # Standardize immediately if SLP is enabled, otherwise use original
-            val = highest if slp_enabled else row['Original_SDR']
-            return round_up(val, sdr_rounding)
-
-        df['New_SDR'] = df.apply(initial_prep, axis=1)
-        df['Base_Price'] = df['New_SDR'].copy()
-        df['Ceiling_Price'] = (df['Original_SDR'] * (1 + inc_cap)).apply(lambda x: round_up(x, sdr_rounding))
-        df['Floor_Price'] = (df['Original_SDR'] * (1 - dec_cap)).apply(lambda x: round_up(x, sdr_rounding))
-
-        adj = defaultdict(list)
-        for mid in raw_price_map.keys():
-            o, d = mid.split("-")
-            adj[o].append(d)
-
-        # 3.2 Optimization Loops
-        for _ in range(2):
-            curr = df.set_index('Match_ID')['New_SDR'].to_dict()
-            for A in adj:
-                for B in adj[A]:
-                    if B not in adj: continue
-                    for C in adj[B]:
-                        id_ac, id_ab, id_bc = f"{A}-{C}", f"{A}-{B}", f"{B}-{C}"
-                        if id_ac in curr:
-                            thru, s_sum = curr[id_ac], curr[id_ab] + curr.get(id_bc, 9999)
-                            if s_sum < (thru - 0.009):
-                                if id_bc in curr and id_bc not in excluded_splits:
-                                    pot_inc = round_up(curr[id_bc] + (thru - s_sum)/2, sdr_rounding)
-                                    curr[id_bc] = min(pot_inc, df.loc[df['Match_ID']==id_bc, 'Ceiling_Price'].values[0])
-                                if id_ac not in excluded_splits:
-                                    pot_dec = round_up(curr[id_ab] + curr[id_bc], sdr_rounding)
-                                    curr[id_ac] = max(pot_dec, df.loc[df['Match_ID']==id_ac, 'Floor_Price'].values[0])
-            
-            for path in SEQUENCES.values():
-                for i, s in enumerate(path):
-                    s_c = s.replace(" ","")
-                    for j, n in enumerate(path[i+1:], i+1):
-                        n_c = n.replace(" ","")
-                        for k, f in enumerate(path[j+1:], j+1):
-                            f_c = f.replace(" ","")
-                            id_near, id_far = f"{s_c}-{n_c}", f"{s_c}-{f_c}"
-                            if id_near in curr and id_far in curr:
-                                if curr[id_near] > curr[id_far] and id_near not in excluded_longbuys:
-                                    curr[id_near] = max(curr[id_far], df.loc[df['Match_ID']==id_near, 'Floor_Price'].values[0])
-            df['New_SDR'] = df['Match_ID'].map(curr)
-
-        # Final Symmetry Check (SLP)
-        if slp_enabled:
-            final_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
-            for mid in list(final_prices.keys()):
-                o, d = mid.split("-")
-                rev = f"{d}-{o}"
-                if rev in final_prices:
-                    unified = max(final_prices[mid], final_prices[rev])
-                    # Re-check caps
-                    c1, f1 = df.loc[df['Match_ID']==mid, ['Ceiling_Price','Floor_Price']].values[0]
-                    c2, f2 = df.loc[df['Match_ID']==rev, ['Ceiling_Price','Floor_Price']].values[0]
-                    final_val = min(max(unified, min(f1, f2)), max(c1, c2))
-                    final_prices[mid] = final_prices[rev] = round_up(final_val, sdr_rounding)
-            df['New_SDR'] = df['Match_ID'].map(final_prices)
-
-        # UI Calculations
-        df['Diff'] = df['New_SDR'] - df['Original_SDR']
-        df['Opt_Increase'] = df['New_SDR'] - df['Base_Price']
-        df['Status'] = df['Diff'].apply(lambda x: "Increased" if x > 0.01 else ("Decreased" if x < -0.01 else "Unchanged"))
 
         # --- 4. DASHBOARD (Inside the "if uploaded_files" block) ---
         st.divider()
