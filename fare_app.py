@@ -154,7 +154,7 @@ if uploaded_files:
         def initial_prep(row):
 
         # --- 4. DASHBOARD (Inside the "if uploaded_files" block) ---
-        st.divider()
+st.divider()
         r1c1, r1c2 = st.columns(2)
         with r1c1:
             st.subheader("Top 10 Price Increases")
