@@ -60,10 +60,12 @@ inc_cap = st.sidebar.slider("Maximum Increase (cap) (%)", 0, 70, 8) / 100
 dec_cap = st.sidebar.slider("Maximum Decrease (cap) (%)", 0, 70, 5) / 100
 st.sidebar.markdown("---")
 st.sidebar.subheader("Low-Volume Adjustments")
+enable_low_vol = st.sidebar.checkbox("Enable Low-Volume Rules", value=True)
 low_vol_threshold = st.sidebar.number_input("Low Volume Threshold (Journeys)", value=1000, step=100)
 low_vol_action = st.sidebar.radio("Action for low-volume flows:", ["Double the Cap", "Ignore the Cap Completely"])
 st.sidebar.markdown("---")
 st.sidebar.subheader("Revenue Protection Guardrails")
+enable_high_rev = st.sidebar.checkbox("Enable Revenue Protection", value=True)
 high_rev_threshold = st.sidebar.number_input("High Revenue Threshold (£)", value=30000, step=5000)
 high_rev_action = st.sidebar.radio("Action for high-revenue flows:", ["Halve the Decrease Cap", "Do Not Decrease At All"])
 sdr_elasticity = st.sidebar.slider("SDR Demand Elasticity", -2.0, 0.0, -0.6, step=0.05)
@@ -170,14 +172,14 @@ if uploaded_files:
         df['Base_Price'] = df['New_SDR'].copy()
         # --- NEW DYNAMIC CEILING LOGIC ---
         def calculate_ceiling(row):
-            # Check if this route is considered "low volume" based on total journeys
-            if row['Total_Journeys'] < low_vol_threshold:
+            # Only run if the feature is explicitly enabled in the sidebar
+            if enable_low_vol and (row['Total_Journeys'] < low_vol_threshold):
                 if low_vol_action == "Ignore the Cap Completely":
-                    return 9999.0  # Set an effectively infinite ceiling so it never limits the increase
+                    return 9999.0
                 else:
-                    effective_cap = inc_cap * 2  # Double the increase cap
+                    effective_cap = inc_cap * 2
             else:
-                effective_cap = inc_cap  # Keep standard cap for high-volume routes
+                effective_cap = inc_cap  # Runs normally if disabled OR if it's a high-volume route
                 
             raw_ceiling = row['Original_SDR'] * (1 + effective_cap)
             return round_up(raw_ceiling, sdr_rounding)
@@ -185,14 +187,14 @@ if uploaded_files:
         df['Ceiling_Price'] = df.apply(calculate_ceiling, axis=1)
         # --- NEW DYNAMIC FLOOR LOGIC ---
         def calculate_floor(row):
-            # Check if this route generates high revenue
-            if row['SDR_Revenue'] > high_rev_threshold:
+            # Only run if the feature is explicitly enabled in the sidebar
+            if enable_high_rev and (row['SDR_Revenue'] > high_rev_threshold):
                 if high_rev_action == "Do Not Decrease At All":
-                    return row['Original_SDR']  # Floor is equal to original price (0% decrease allowed)
+                    return row['Original_SDR']
                 else:
-                    effective_dec_cap = dec_cap / 2  # Halve the allowed decrease percentage
+                    effective_dec_cap = dec_cap / 2
             else:
-                effective_dec_cap = dec_cap  # Keep standard decrease cap for lower-revenue routes
+                effective_dec_cap = dec_cap  # Runs normally if disabled OR if it's a low-revenue route
                 
             raw_floor = row['Original_SDR'] * (1 - effective_dec_cap)
             return round_up(raw_floor, sdr_rounding)
