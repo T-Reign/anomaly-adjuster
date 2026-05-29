@@ -253,7 +253,13 @@ if uploaded_files:
                     if id_ac in f_prices:
                         thru, s_sum = f_prices[id_ac], f_prices[id_ab] + f_prices.get(id_bc, 0)
                         if thru > (s_sum + 0.01):
-                            gaps.append({"Journey": f"{display_origin_map.get(A, A)} to {display_dest_map.get(C, C)}", "Split At": display_origin_map.get(B, B), "New Fare": thru, "Split Fare": s_sum, "Difference": round(thru - s_sum, 2)})
+                            gaps.append({
+                                "Journey": f"{A.title()} to {C.title()}", 
+                                "Split At": B.title(), 
+                                "New Fare": thru, 
+                                "Split Fare": s_sum, 
+                                "Difference": round(thru - s_sum, 2)
+                            })
         if gaps:
             st.dataframe(pd.DataFrame(gaps).sort_values('Difference', ascending=False).head(300), 
                          column_config={"New Fare": st.column_config.NumberColumn(format="£%.2f"), "Split Fare": st.column_config.NumberColumn(format="£%.2f"), "Difference": st.column_config.NumberColumn(format="£%.2f")},
