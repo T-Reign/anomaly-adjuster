@@ -387,7 +387,7 @@ if uploaded_files:
         journey_changes = df[df['Diff'].abs() > 0.01].sort_values('SDR_Journeys', ascending=False).head(10)
         st.dataframe(journey_changes[['Origin Description', 'Destination Description', 'SDR_Journeys', 'Original_SDR', 'New_SDR', 'Diff']], 
                      column_config={
-                         "SDR_Journeys": st.column_config.NumberColumn("Journeys Affected", format="%,3,d"), 
+                         "SDR_Journeys": st.column_config.NumberColumn("Journeys Affected", format="%,3d"), 
                          "Original_SDR": st.column_config.NumberColumn("Original Fare", format="£%.2f"), 
                          "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f"), 
                          "Diff": st.column_config.NumberColumn("Price Change", format="£%.2f")
