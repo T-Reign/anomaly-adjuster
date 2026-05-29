@@ -431,6 +431,15 @@ if uploaded_files:
                          "Diff": st.column_config.NumberColumn("Price Change", format="£%.2f")
                      },
                      use_container_width=True, hide_index=True)
+        # --- NEW JOURNEY SUMMARY METRICS ---
+        st.write("") # Tiny spacer
+        m1, m2 = st.columns(2)
+        total_prev_journeys = df['SDR_Journeys'].sum()
+        total_new_journeys = df['Predicted_SDR_Journeys'].sum()
+        journey_delta = total_new_journeys - total_prev_journeys
+        
+        m1.metric(label="Previous Total Journeys", value=f"{total_prev_journeys:,.0f}")
+        m2.metric(label="New Total Journeys", value=f"{total_new_journeys:,.0f}", delta=f"{journey_delta:+,.0f}")
                      
     with r3c2:
         st.subheader("Biggest Revenue Changes")
@@ -444,6 +453,15 @@ if uploaded_files:
                          "Revenue_Impact": st.column_config.NumberColumn("Revenue Impact", format="£%,d")
                      },
                      use_container_width=True, hide_index=True)
+        # --- NEW REVENUE SUMMARY METRICS ---
+        st.write("") # Tiny spacer
+        m3, m4 = st.columns(2)
+        total_prev_rev = df['Old_SDR_Revenue'].sum()
+        total_new_rev = df['New_SDR_Revenue'].sum()
+        revenue_delta = total_new_rev - total_prev_rev
+        
+        m3.metric(label="Previous Total Revenue", value=f"£{total_prev_rev:,.0f}")
+        m4.metric(label="New Total Revenue", value=f"£{total_new_rev:,.0f}", delta=f"£{revenue_delta:+,.0f}")
 
     st.divider()
     st.subheader("Full Fare Summary")
