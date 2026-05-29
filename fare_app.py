@@ -152,6 +152,76 @@ if uploaded_files:
 
         # Initial preparation
         def initial_prep(row):
+        
+        # Initial preparation
+        def initial_prep(row):
+            parts = row['Match_ID'].split("-")
+            rev_id = f"{parts[1]}-{parts[0]}"
+            highest = max(row['Original_SDR'], raw_price_map.get(rev_id, 0))
+            # Standardize immediately if SLP is enabled, otherwise use original
+            val = highest if slp_enabled else row['Original_SDR']
+            return round_up(val, sdr_rounding)
+
+        df['New_SDR'] = df.apply(initial_prep, axis=1)
+        df['Base_Price'] = df['New_SDR'].copy()
+        df['Ceiling_Price'] = (df['Original_SDR'] * (1 + inc_cap)).apply(lambda x: round_up(x, sdr_rounding))
+        df['Floor_Price'] = (df['Original_SDR'] * (1 - dec_cap)).apply(lambda x: round_up(x, sdr_rounding))
+
+        adj = defaultdict(list)
+        for mid in raw_price_map.keys():
+            o, d = mid.split("-")
+            adj[o].append(d)
+
+        # 3.2 Optimization Loops
+        for _ in range(2):
+            curr = df.set_index('Match_ID')['New_SDR'].to_dict()
+            for A in adj:
+                for B in adj[A]:
+                    if B not in adj: continue
+                    for C in adj[B]:
+                        id_ac, id_ab, id_bc = f"{A}-{C}", f"{A}-{B}", f"{B}-{C}"
+                        if id_ac in curr:
+                            thru, s_sum = curr[id_ac], curr[id_ab] + curr.get(id_bc, 9999)
+                            if s_sum < (thru - 0.009):
+                                if id_bc in curr and id_bc not in excluded_splits:
+                                    pot_inc = round_up(curr[id_bc] + (thru - s_sum)/2, sdr_rounding)
+                                    curr[id_bc] = min(pot_inc, df.loc[df['Match_ID']==id_bc, 'Ceiling_Price'].values[0])
+                                if id_ac not in excluded_splits:
+                                    pot_dec = round_up(curr[id_ab] + curr[id_bc], sdr_rounding)
+                                    curr[id_ac] = max(pot_dec, df.loc[df['Match_ID']==id_ac, 'Floor_Price'].values[0])
+            
+            for path in SEQUENCES.values():
+                for i, s in enumerate(path):
+                    s_c = s.replace(" ","")
+                    for j, n in enumerate(path[i+1:], i+1):
+                        n_c = n.replace(" ","")
+                        for k, f in enumerate(path[j+1:], j+1):
+                            f_c = f.replace(" ","")
+                            id_near, id_far = f"{s_c}-{n_c}", f"{s_c}-{f_c}"
+                            if id_near in curr and id_far in curr:
+                                if curr[id_near] > curr[id_far] and id_near not in excluded_longbuys:
+                                    curr[id_near] = max(curr[id_far], df.loc[df['Match_ID']==id_near, 'Floor_Price'].values[0])
+            df['New_SDR'] = df['Match_ID'].map(curr)
+
+        # Final Symmetry Check (SLP)
+        if slp_enabled:
+            final_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
+            for mid in list(final_prices.keys()):
+                o, d = mid.split("-")
+                rev = f"{d}-{o}"
+                if rev in final_prices:
+                    unified = max(final_prices[mid], final_prices[rev])
+                    # Re-check caps
+                    c1, f1 = df.loc[df['Match_ID']==mid, ['Ceiling_Price','Floor_Price']].values[0]
+                    c2, f2 = df.loc[df['Match_ID']==rev, ['Ceiling_Price','Floor_Price']].values[0]
+                    final_val = min(max(unified, min(f1, f2)), max(c1, c2))
+                    final_prices[mid] = final_prices[rev] = round_up(final_val, sdr_rounding)
+            df['New_SDR'] = df['Match_ID'].map(final_prices)
+
+        # UI Calculations
+        df['Diff'] = df['New_SDR'] - df['Original_SDR']
+        df['Opt_Increase'] = df['New_SDR'] - df['Base_Price']
+        df['Status'] = df['Diff'].apply(lambda x: "Increased" if x > 0.01 else ("Decreased" if x < -0.01 else "Unchanged"))
 
         # --- 4. DASHBOARD (Inside the "if uploaded_files" block) ---
         st.divider()
