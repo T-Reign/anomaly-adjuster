@@ -149,9 +149,6 @@ if uploaded_files:
             df['Total_Journeys'] = 0
             df['SDR_Journeys'] = 0
             df['SDR_Revenue'] = 0.0
-
-        # Initial preparation
-        def initial_prep(row):
         
         # Initial preparation
         def initial_prep(row):
