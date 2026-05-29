@@ -62,6 +62,10 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("Low-Volume Adjustments")
 low_vol_threshold = st.sidebar.number_input("Low Volume Threshold (Journeys)", value=1000, step=100)
 low_vol_action = st.sidebar.radio("Action for low-volume flows:", ["Double the Cap", "Ignore the Cap Completely"])
+st.sidebar.markdown("---")
+st.sidebar.subheader("Revenue Protection Guardrails")
+high_rev_threshold = st.sidebar.number_input("High Revenue Threshold (£)", value=30000, step=5000)
+high_rev_action = st.sidebar.radio("Action for high-revenue flows:", ["Halve the Decrease Cap", "Do Not Decrease At All"])
 sdr_elasticity = st.sidebar.slider("SDR Demand Elasticity", -2.0, 0.0, -0.6, step=0.05)
 
 uploaded_files = st.sidebar.file_uploader("Upload Fare Spreadsheets", type=["xlsx"], accept_multiple_files=True)
@@ -179,7 +183,21 @@ if uploaded_files:
             return round_up(raw_ceiling, sdr_rounding)
 
         df['Ceiling_Price'] = df.apply(calculate_ceiling, axis=1)
-        df['Floor_Price'] = (df['Original_SDR'] * (1 - dec_cap)).apply(lambda x: round_up(x, sdr_rounding))
+        # --- NEW DYNAMIC FLOOR LOGIC ---
+        def calculate_floor(row):
+            # Check if this route generates high revenue
+            if row['SDR_Revenue'] > high_rev_threshold:
+                if high_rev_action == "Do Not Decrease At All":
+                    return row['Original_SDR']  # Floor is equal to original price (0% decrease allowed)
+                else:
+                    effective_dec_cap = dec_cap / 2  # Halve the allowed decrease percentage
+            else:
+                effective_dec_cap = dec_cap  # Keep standard decrease cap for lower-revenue routes
+                
+            raw_floor = row['Original_SDR'] * (1 - effective_dec_cap)
+            return round_up(raw_floor, sdr_rounding)
+
+        df['Floor_Price'] = df.apply(calculate_floor, axis=1)
 
         adj = defaultdict(list)
         for mid in raw_price_map.keys():
