@@ -254,25 +254,40 @@ if uploaded_files:
 
         # --- 4. DASHBOARD ---
         # =========================================================================
-        # --- UPDATED: DUAL ROUTE VISUALIZATION & COMPARATOR HUB (TOP OF WORKSPACE) ---
+        # --- AUTOMATED: ROUTE ANALYTICS HUB (AUTO-DETECT LINE OF ROUTE) ---
         # =========================================================================
         st.divider()
         st.subheader("Route Analytics Hub")
-        st.caption("Select a predefined line of route to analyze intermediate split opportunities and compare old vs. new price profiles.")
+        st.caption("Type or select an Origin and Destination station. The model will automatically discover the correct line of route, identify intermediate split opportunities, and compare old vs. new price profiles.")
         
-        selected_seq_name = st.selectbox("Choose a Line of Route:", list(SEQUENCES.keys()))
-        station_sequence = SEQUENCES[selected_seq_name]
+        # 1. Compile a sorted, unique list of all stations from across all sequences
+        all_stations = sorted(list(set(stn for seq in SEQUENCES.values() for stn in seq)))
         
-        if len(station_sequence) >= 3:
-            vc1, vc2 = st.columns(2)
-            with vc1:
-                start_stn = st.selectbox("Origin Station:", station_sequence[:-2], index=0)
-                start_idx = station_sequence.index(start_stn)
-            with vc2:
-                end_stn = st.selectbox("Destination Station:", station_sequence[start_idx + 2:], index=len(station_sequence[start_idx + 2:])-1)
-                end_idx = station_sequence.index(end_stn)
+        # 2. Side-by-side searchable station selectors
+        vc1, vc2 = st.columns(2)
+        with vc1:
+            start_stn = st.selectbox("Select Origin Station:", all_stations, index=0)
+        with vc2:
+            # Set default destination index to the second item in the list if available
+            default_idx = 1 if len(all_stations) > 1 else 0
+            end_stn = st.selectbox("Select Destination Station:", all_stations, index=default_idx)
             
-            active_route = station_sequence[start_idx:end_idx + 1]
+        # 3. Background search engine: Discover matching route sequence and verify direction
+        matching_seq_name = None
+        active_route = []
+        
+        for seq_name, seq_list in SEQUENCES.items():
+            if start_stn in seq_list and end_stn in seq_list:
+                s_idx = seq_list.index(start_stn)
+                e_idx = seq_list.index(end_stn)
+                if s_idx < e_idx:  # Verifies correct travel direction down the corridor
+                    matching_seq_name = seq_name
+                    active_route = seq_list[s_idx:e_idx + 1]
+                    break
+        
+        # 4. Render visualizations if a matching route is successfully discovered
+        if matching_seq_name:
+            st.success(f"**Route Discovered:** Analyzing via the **{matching_seq_name}** network corridor.")
             
             # Master pricing maps for both old and new fares
             f_prices_new = df.set_index('Match_ID')['New_SDR'].to_dict()
@@ -285,7 +300,7 @@ if uploaded_files:
             direct_fare_id = f"{start_clean}-{end_clean}"
             direct_fare_new = f_prices_new.get(direct_fare_id, 0.0)
             
-            # --- 1. GATHER DATA FOR SPLIT BAR CHART ---
+            # --- GATHER DATA FOR SPLIT BAR CHART ---
             chart_data_splits = []
             for i in range(1, len(active_route) - 1):
                 mid_stn = active_route[i]
@@ -306,7 +321,7 @@ if uploaded_files:
                         "Leg 2 Price": leg2_price
                     })
 
-            # --- 2. GATHER DATA FOR OLD VS NEW LINE COMPARATOR ---
+            # --- GATHER DATA FOR OLD VS NEW LINE COMPARATOR ---
             chart_data_comparison = []
             for stn in active_route[1:]:  # Track fares stepping away from the origin
                 stn_clean = stn.replace(" ", "")
@@ -323,7 +338,7 @@ if uploaded_files:
                         "Change (£)": new_f - old_f
                     })
 
-            # --- 3. RENDER VISUALIZATIONS SIDE-BY-SIDE ---
+            # --- RENDER VISUALIZATIONS SIDE-BY-SIDE ---
             import plotly.graph_objects as go
             gc1, gc2 = st.columns(2)
             
@@ -360,9 +375,9 @@ if uploaded_files:
                     )
                     st.plotly_chart(fig_splits, use_container_width=True)
                 else:
-                    st.info("Select a broader sequence segment to show internal split points.")
+                    st.info("No internal split points with complete fare combinations found for this specific station pairing.")
             
-            # Right Column: Old vs New Price Line Profile (Your New Idea!)
+            # Right Column: Old vs New Price Line Profile (Your Whiteboard Diagram!)
             with gc2:
                 if chart_data_comparison:
                     df_comp = pd.DataFrame(chart_data_comparison)
@@ -392,16 +407,16 @@ if uploaded_files:
                     ))
                     
                     fig_comp.update_layout(
-                        title=f"Fare Progression Matrix Outward from {start_stn.title()}",
+                        title=f"Fare Progression Outward from {start_stn.title()}",
                         xaxis_title="Destination Milestone Stops", yaxis_title="Fare Price (£)",
                         template="plotly_white", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                         hovermode="x unified"
                     )
                     st.plotly_chart(fig_comp, use_container_width=True)
                 else:
-                    st.info("No matching price comparison points found for this segment.")
-                    
-        # =========================================================================
+                    st.info("No historical comparison data rows found for this selection.")
+        else:
+            st.info(f"No predefined line of route connects **{start_stn.title()}** to **{end_stn.title()}** in that direction. Please check your origin/destination corridor pairings.")
         # =========================================================================
 
         st.divider()
