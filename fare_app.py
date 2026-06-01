@@ -312,15 +312,6 @@ if uploaded_files:
             f_prices_new = df.set_index('Match_ID')['New_SDR'].to_dict()
             f_prices_old = df.set_index('Match_ID')['Original_SDR'].to_dict()
             
-        
-        # 4. Render visualizations if a matching route is successfully discovered
-        if matching_seq_name:
-            st.success(f"**Route Discovered:** Analyzing via the **{matching_seq_name}** network corridor.")
-            
-            # Master pricing maps for both old and new fares
-            f_prices_new = df.set_index('Match_ID')['New_SDR'].to_dict()
-            f_prices_old = df.set_index('Match_ID')['Original_SDR'].to_dict()
-            
             start_clean = start_stn.replace(" ", "")
             end_clean = end_stn.replace(" ", "")
             
