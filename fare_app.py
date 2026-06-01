@@ -58,11 +58,13 @@ slp_enabled = st.sidebar.checkbox("Enable Single-Leg Pricing", value=True)
 sdr_rounding = st.sidebar.select_slider("Rounding (£)", options=[0.00, 0.05, 0.10, 0.20, 0.50, 1.00], value=0.20)
 inc_cap = st.sidebar.slider("Maximum Increase (cap) (%)", 0, 70, 8) / 100
 dec_cap = st.sidebar.slider("Maximum Decrease (cap) (%)", 0, 70, 5) / 100
+
 st.sidebar.markdown("---")
 st.sidebar.subheader("Low-Volume Adjustments")
 enable_low_vol = st.sidebar.checkbox("Enable Low-Volume Rules", value=True)
 low_vol_threshold = st.sidebar.number_input("Low Volume Threshold (Journeys)", value=1000, step=100)
 low_vol_action = st.sidebar.radio("Action for low-volume flows:", ["Double the Cap", "Ignore the Cap Completely"])
+
 st.sidebar.markdown("---")
 st.sidebar.subheader("Revenue Protection Guardrails")
 enable_high_rev = st.sidebar.checkbox("Enable Revenue Protection", value=True)
@@ -79,26 +81,21 @@ if uploaded_files:
         all_jr_dfs = []
         
         for f in uploaded_files:
-            # 1. Read Main Sheet for Fares
             df_main = pd.read_excel(f, sheet_name='Main Sheet', header=1)
             all_dfs.append(df_main)
             
-            # 2. Read Journeys & Revenue Sheet 
             try:
                 df_jr_raw = pd.read_excel(f, sheet_name='Journeys and Revenue')
                 all_jr_dfs.append(df_jr_raw)
             except Exception as e:
                 st.error(f"Could not find 'Journeys and Revenue' sheet in {f.name}. Please ensure the sheet name matches exactly.")
 
-        # Combine Fare Data
         df = pd.concat(all_dfs, ignore_index=True)
         df.columns = [str(c).strip() for c in df.columns]
         
-        # --- FIXED STEP 1: Transform to Title Case early to cascade down to all tables automatically
         df['Origin Description'] = df.iloc[:, 1].astype(str).str.strip().str.title()
         df['Destination Description'] = df.iloc[:, 3].astype(str).str.strip().str.title()
         
-        # --- FIXED STEP 2: Create columns in correct hierarchical execution order
         df['Origin_N'] = df['Origin Description'].str.upper().str.replace(" ", "")
         df['Dest_N'] = df['Destination Description'].str.upper().str.replace(" ", "")
         df['Match_ID'] = df['Origin_N'] + "-" + df['Dest_N']
@@ -108,17 +105,14 @@ if uploaded_files:
         
         raw_price_map = df.set_index('Match_ID')['Original_SDR'].to_dict()
 
-        # Combine and Process Journeys & Revenue Data
         if all_jr_dfs:
             df_jr = pd.concat(all_jr_dfs, ignore_index=True)
             df_jr.columns = [str(c).strip() for c in df_jr.columns]
             
-            # Match tokens behind the scenes using uppercase/no spaces
             df_jr['Origin_N'] = df_jr['True Origin Description'].astype(str).str.upper().str.replace(" ", "")
             df_jr['Dest_N'] = df_jr['True Destination Description'].astype(str).str.upper().str.replace(" ", "")
             df_jr['Match_ID'] = df_jr['Origin_N'] + "-" + df_jr['Dest_N']
             
-            # Product code normalization
             product_mapping = {
                 '2BAF': 'SDR', '1BAF': 'SDR',
                 '2AAA': 'SDS', '1AAA': 'SDS',
@@ -135,11 +129,9 @@ if uploaded_files:
             df_jr['JOURNEYS'] = pd.to_numeric(df_jr['JOURNEYS'], errors='coerce').fillna(0)
             df_jr['REVENUE'] = pd.to_numeric(df_jr['REVENUE'], errors='coerce').fillna(0.0)
             
-            # Metric 1: Total Volume across ALL ticket types (for volume filtering)
             total_jr_summary = df_jr.groupby('Match_ID')['JOURNEYS'].sum().reset_index()
             total_jr_summary.columns = ['Match_ID', 'Total_Journeys']
             
-            # Metric 2: Specific SDR Volume and Revenue (for elasticity later)
             df_sdr_jr = df_jr[df_jr['Standard_Product'] == 'SDR']
             sdr_jr_summary = df_sdr_jr.groupby('Match_ID').agg({
                 'JOURNEYS': 'sum',
@@ -147,11 +139,9 @@ if uploaded_files:
             }).reset_index()
             sdr_jr_summary.columns = ['Match_ID', 'SDR_Journeys', 'SDR_Revenue']
             
-            # Merge both sets of data into the main fares list
             df = df.merge(total_jr_summary, on='Match_ID', how='left')
             df = df.merge(sdr_jr_summary, on='Match_ID', how='left')
             
-            # Fill missing flows with zero values
             df['Total_Journeys'] = df['Total_Journeys'].fillna(0)
             df['SDR_Journeys'] = df['SDR_Journeys'].fillna(0)
             df['SDR_Revenue'] = df['SDR_Revenue'].fillna(0.0)
@@ -160,7 +150,6 @@ if uploaded_files:
             df['SDR_Journeys'] = 0
             df['SDR_Revenue'] = 0.0
         
-        # Initial preparation
         def initial_prep(row):
             parts = row['Match_ID'].split("-")
             rev_id = f"{parts[1]}-{parts[0]}"
@@ -170,31 +159,29 @@ if uploaded_files:
 
         df['New_SDR'] = df.apply(initial_prep, axis=1)
         df['Base_Price'] = df['New_SDR'].copy()
-        # --- NEW DYNAMIC CEILING LOGIC ---
+
         def calculate_ceiling(row):
-            # Only run if the feature is explicitly enabled in the sidebar
             if enable_low_vol and (row['Total_Journeys'] < low_vol_threshold):
                 if low_vol_action == "Ignore the Cap Completely":
                     return 9999.0
                 else:
                     effective_cap = inc_cap * 2
             else:
-                effective_cap = inc_cap  # Runs normally if disabled OR if it's a high-volume route
+                effective_cap = inc_cap
                 
             raw_ceiling = row['Original_SDR'] * (1 + effective_cap)
             return round_up(raw_ceiling, sdr_rounding)
 
         df['Ceiling_Price'] = df.apply(calculate_ceiling, axis=1)
-        # --- NEW DYNAMIC FLOOR LOGIC ---
+
         def calculate_floor(row):
-            # Only run if the feature is explicitly enabled in the sidebar
             if enable_high_rev and (row['SDR_Revenue'] > high_rev_threshold):
                 if high_rev_action == "Do Not Decrease At All":
                     return row['Original_SDR']
                 else:
                     effective_dec_cap = dec_cap / 2
             else:
-                effective_dec_cap = dec_cap  # Runs normally if disabled OR if it's a low-revenue route
+                effective_dec_cap = dec_cap
                 
             raw_floor = row['Original_SDR'] * (1 - effective_dec_cap)
             return round_up(raw_floor, sdr_rounding)
@@ -206,7 +193,6 @@ if uploaded_files:
             o, d = mid.split("-")
             adj[o].append(d)
 
-        # 3.2 Optimization Loops
         for _ in range(2):
             curr = df.set_index('Match_ID')['New_SDR'].to_dict()
             for A in adj:
@@ -237,7 +223,6 @@ if uploaded_files:
                                     curr[id_near] = max(curr[id_far], df.loc[df['Match_ID']==id_near, 'Floor_Price'].values[0])
         df['New_SDR'] = df['Match_ID'].map(curr)
 
-        # Final Symmetry Check (SLP)
         if slp_enabled:
             final_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
             for mid in list(final_prices.keys()):
@@ -251,23 +236,16 @@ if uploaded_files:
                     final_prices[mid] = final_prices[rev] = round_up(final_val, sdr_rounding)
             df['New_SDR'] = df['Match_ID'].map(final_prices)
 
-        # UI Calculations
         df['Diff'] = df['New_SDR'] - df['Original_SDR']
         df['Opt_Increase'] = df['New_SDR'] - df['Base_Price']
         df['Status'] = df['Diff'].apply(lambda x: "Increased" if x > 0.01 else ("Decreased" if x < -0.01 else "Unchanged"))
         
-        # --- NEW IMPACT CALCULATIONS ---
-        # 1. Prevent division by zero if an original fare is £0
         safe_orig_fare = df['Original_SDR'].replace(0, 1)
-        
-        # 2. Calculate the % change in price
         df['Price_Pct_Change'] = df['Diff'] / safe_orig_fare
         
-        # 3. Apply elasticity to calculate the new passenger volume
         df['Predicted_SDR_Journeys'] = df['SDR_Journeys'] * (1 + (sdr_elasticity * df['Price_Pct_Change']))
-        df['Predicted_SDR_Journeys'] = df['Predicted_SDR_Journeys'].clip(lower=0) # Volume can't drop below 0
+        df['Predicted_SDR_Journeys'] = df['Predicted_SDR_Journeys'].clip(lower=0)
         
-        # 4. Revenue Impact = (New Volume × New Fare) - (Old Volume × Old Fare)
         df['Old_SDR_Revenue'] = df['SDR_Journeys'] * df['Original_SDR']
         df['New_SDR_Revenue'] = df['Predicted_SDR_Journeys'] * df['New_SDR']
         
@@ -275,6 +253,89 @@ if uploaded_files:
         df['Abs_Revenue_Impact'] = df['Revenue_Impact'].abs()
 
         # --- 4. DASHBOARD ---
+        
+        # =========================================================================
+        # --- NEW PLACEMENT: ROUTE PROFILE VISUALIZER CHART (TOP OF WORKSPACE) ---
+        # =========================================================================
+        st.divider()
+        st.subheader("Route Profile Visualizer")
+        st.caption("Select a predefined line of route to visualize intermediate split fare profiles against the direct fare.")
+        
+        selected_seq_name = st.selectbox("Choose a Line of Route:", list(SEQUENCES.keys()))
+        station_sequence = SEQUENCES[selected_seq_name]
+        
+        if len(station_sequence) >= 3:
+            vc1, vc2 = st.columns(2)
+            with vc1:
+                start_stn = st.selectbox("Origin Station:", station_sequence[:-2], index=0)
+                start_idx = station_sequence.index(start_stn)
+            with vc2:
+                end_stn = st.selectbox("Destination Station:", station_sequence[start_idx + 2:], index=len(station_sequence[start_idx + 2:])-1)
+                end_idx = station_sequence.index(end_stn)
+            
+            active_route = station_sequence[start_idx:end_idx + 1]
+            f_prices_chart = df.set_index('Match_ID')['New_SDR'].to_dict()
+            
+            start_clean = start_stn.replace(" ", "")
+            end_clean = end_stn.replace(" ", "")
+            direct_fare_id = f"{start_clean}-{end_clean}"
+            direct_fare = f_prices_chart.get(direct_fare_id, 0.0)
+            
+            chart_data = []
+            for i in range(1, len(active_route) - 1):
+                mid_stn = active_route[i]
+                mid_clean = mid_stn.replace(" ", "")
+                
+                leg1_id = f"{start_clean}-{mid_clean}"
+                leg2_id = f"{mid_clean}-{end_clean}"
+                
+                leg1_price = f_prices_chart.get(leg1_id, 0.0)
+                leg2_price = f_prices_chart.get(leg2_id, 0.0)
+                combined_split_fare = leg1_price + leg2_price
+                
+                if leg1_price > 0 and leg2_price > 0:
+                    chart_data.append({
+                        "Intermediate Station": mid_stn.title(),
+                        "Split Fare (£)": combined_split_fare,
+                        "Leg 1 Price": leg1_price,
+                        "Leg 2 Price": leg2_price
+                    })
+
+            if chart_data and direct_fare > 0:
+                df_chart = pd.DataFrame(chart_data)
+                import plotly.graph_objects as go
+                
+                fig = go.Figure()
+                fig.add_trace(go.Bar(
+                    x=df_chart["Intermediate Station"],
+                    y=df_chart["Split Fare (£)"],
+                    name="Combined Split Price",
+                    marker_color='rgb(55, 83, 109)',
+                    customdata=df_chart[["Leg 1 Price", "Leg 2 Price"]],
+                    hovertemplate="<b>Split Station: %{x}</b><br>Total Split Cost: £%{y:.2f}<br>Leg 1: £%{customdata[0]:.2f}<br>Leg 2: £%{customdata[1]:.2f}<extra></extra>"
+                ))
+                
+                fig.add_shape(
+                    type="line", x0=-0.5, y0=direct_fare, x1=len(df_chart) - 0.5, y1=direct_fare,
+                    line=dict(color="Crimson", width=3, dash="dash"),
+                )
+                
+                fig.add_trace(go.Scatter(
+                    x=[df_chart["Intermediate Station"].iloc[0]], y=[direct_fare],
+                    mode="lines", name=f"Direct Fare (£{direct_fare:.2f})",
+                    line=dict(color="Crimson", width=3, dash="dash"), showlegend=True
+                ))
+                
+                fig.update_layout(
+                    title=f"Split Fare Profile: {start_stn.title()} to {end_stn.title()}",
+                    xaxis_title="Intermediate Splitting Points", yaxis_title="Total Fare Price (£)",
+                    barmode='group', template="plotly_white", hovermode="x unified"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info(f"Not enough structural matching matrix rows to verify step links between {start_stn.title()} and {end_stn.title()}.")
+        # =========================================================================
+
         st.divider()
         r1c1, r1c2 = st.columns(2)
         with r1c1:
@@ -291,182 +352,151 @@ if uploaded_files:
                          use_container_width=True, hide_index=True)
 
         st.divider()
-    r2c1, r2c2 = st.columns(2)
-    with r2c1:
-        st.subheader("Remaining Split-Ticketing Opportunities")
-        f_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
-        
-        # --- FIXED STEP 3: Dictionaries now map directly to Title Case strings
-        n_map = df.set_index('Origin_N')['Origin Description'].to_dict()
-        gaps = []
-        for A in adj:
-            for B in adj[A]:
-                if B not in adj: continue
-                for C in adj[B]:
-                    id_ac, id_ab, id_bc = f"{A}-{C}", f"{A}-{B}", f"{B}-{C}"
-                    if id_ac in f_prices:
-                        thru, s_sum = f_prices[id_ac], f_prices[id_ab] + f_prices.get(id_bc, 0)
-                        if thru > (s_sum + 0.01):
-                            # Safe fallback formatting with string transformation to guarantee title casing
-                            origin_label = str(n_map.get(A, A)).title()
-                            dest_label = str(n_map.get(C, C)).title()
-                            split_label = str(n_map.get(B, B)).title()
-                            
-                            gaps.append({
-                                "Journey": f"{origin_label} to {dest_label}", 
-                                "Split At": split_label, 
-                                "New Fare": thru, 
-                                "Split Fare": s_sum, 
-                                "Difference": round(thru - s_sum, 2)
-                            })
-        if gaps:
-            st.dataframe(pd.DataFrame(gaps).sort_values('Difference', ascending=False).head(300), 
-                         column_config={"New Fare": st.column_config.NumberColumn(format="£%.2f"), "Split Fare": st.column_config.NumberColumn(format="£%.2f"), "Difference": st.column_config.NumberColumn(format="£%.2f")},
-                         use_container_width=True, hide_index=True)
-        else:
-            st.success("No Split-Ticket Opportunities Found")
-            
-        base_prices = df.set_index('Match_ID')['Base_Price'].to_dict()
-        split_before = 0
-        for A in adj:
-            for B in adj[A]:
-                if B not in adj: continue
-                for C in adj[B]:
-                    id_ac, id_ab, id_bc = f"{A}-{C}", f"{A}-{B}", f"{B}-{C}"
-                    if id_ac in base_prices:
-                        thru = base_prices[id_ac]
-                        s_sum = base_prices[id_ab] + base_prices.get(id_bc, 0)
-                        if thru > s_sum + 0.01:
-                                split_before += 1
-
-        split_after = len(gaps)
-        split_solved = split_before - split_after
-
-        st.markdown(
-            (
-                f"**Split-ticket opportunities solved:** {split_solved}<br>"
-                f"**Remaining:** {split_after}"
-            ),
-            unsafe_allow_html=True
-        )
-    with r2c2:
-        st.subheader("Remaining Long-Buying Opportunities")
-
-        lb_gaps = []
-
-        for path in SEQUENCES.values():
-            clean_path = [p.replace(" ", "") for p in path]
-
-            for i, s in enumerate(clean_path):
-                for j, n in enumerate(clean_path[i+1:], i+1):
-                    id_sn = f"{s}-{n}"
-
-                    for k, f in enumerate(clean_path[j+1:], j+1):
-                        id_sf = f"{s}-{f}"
-
-                        if id_sn in f_prices and id_sf in f_prices:
-                            near = f_prices[id_sn]
-                            far = f_prices[id_sf]
-
-                            if near > far + 0.01:
-                                lb_gaps.append({
-                                    "Origin(A)": path[i].title(),
-                                    "Destination(B)": path[j].title(),
-                                    "Following Stn(C)": path[k].title(),
-                                    "Price to B": near,
-                                    "Price to C": far,
-                                    "Difference": round(near - far, 2)
+        r2c1, r2c2 = st.columns(2)
+        with r2c1:
+            st.subheader("Remaining Split-Ticketing Opportunities")
+            f_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
+            n_map = df.set_index('Origin_N')['Origin Description'].to_dict()
+            gaps = []
+            for A in adj:
+                for B in adj[A]:
+                    if B not in adj: continue
+                    for C in adj[B]:
+                        id_ac, id_ab, id_bc = f"{A}-{C}", f"{A}-{B}", f"{B}-{C}"
+                        if id_ac in f_prices:
+                            thru, s_sum = f_prices[id_ac], f_prices[id_ab] + f_prices.get(id_bc, 0)
+                            if thru > (s_sum + 0.01):
+                                origin_label = str(n_map.get(A, A)).title()
+                                dest_label = str(n_map.get(C, C)).title()
+                                split_label = str(n_map.get(B, B)).title()
+                                
+                                gaps.append({
+                                    "Journey": f"{origin_label} to {dest_label}", 
+                                    "Split At": split_label, 
+                                    "New Fare": thru, 
+                                    "Split Fare": s_sum, 
+                                    "Difference": round(thru - s_sum, 2)
                                 })
+            if gaps:
+                st.dataframe(pd.DataFrame(gaps).sort_values('Difference', ascending=False).head(300), 
+                             column_config={"New Fare": st.column_config.NumberColumn(format="£%.2f"), "Split Fare": st.column_config.NumberColumn(format="£%.2f"), "Difference": st.column_config.NumberColumn(format="£%.2f")},
+                             use_container_width=True, hide_index=True)
+            else:
+                st.success("No Split-Ticket Opportunities Found")
+                
+            base_prices = df.set_index('Match_ID')['Base_Price'].to_dict()
+            split_before = 0
+            for A in adj:
+                for B in adj[A]:
+                    if B not in adj: continue
+                    for C in adj[B]:
+                        id_ac, id_ab, id_bc = f"{A}-{C}", f"{A}-{B}", f"{B}-{C}"
+                        if id_ac in base_prices:
+                            thru = base_prices[id_ac]
+                            s_sum = base_prices[id_ab] + base_prices.get(id_bc, 0)
+                            if thru > s_sum + 0.01:
+                                    split_before += 1
 
-        if lb_gaps:
-           st.dataframe(
-               pd.DataFrame(lb_gaps).sort_values("Difference", ascending=False).head(30),
-               column_config={
-                   "Price to B": st.column_config.NumberColumn(format="£%.2f"),
-                   "Price to C": st.column_config.NumberColumn(format="£%.2f"),
-                   "Difference": st.column_config.NumberColumn(format="£%.2f")
-               },
-               use_container_width=True,
-               hide_index=True
-           )
-        else:
-            st.info("No Long-Buying Opportunities Found")
+            split_after = len(gaps)
+            split_solved = split_before - split_after
+            st.markdown(f"**Split-ticket opportunities solved:** {split_solved}<br>**Remaining:** {split_after}", unsafe_allow_html=True)
             
-        lb_before = 0
-        for path in SEQUENCES.values():
-            clean = [p.replace(" ", "") for p in path]
-            for i, s in enumerate(clean):
-                for j, n in enumerate(clean[i+1:], i+1):
-                    id_sn = f"{s}-{n}"
-                    for k, f in enumerate(clean[j+1:], j+1):
-                        id_sf = f"{s}-{f}"
-                        if id_sn in base_prices and id_sf in base_prices:
-                            if base_prices[id_sn] > base_prices[id_sf] + 0.01:
-                                    lb_before += 1
+        with r2c2:
+            st.subheader("Remaining Long-Buying Opportunities")
+            lb_gaps = []
+            for path in SEQUENCES.values():
+                clean_path = [p.replace(" ", "") for p in path]
+                for i, s in enumerate(clean_path):
+                    for j, n in enumerate(clean_path[i+1:], i+1):
+                        id_sn = f"{s}-{n}"
+                        for k, f in enumerate(clean_path[j+1:], j+1):
+                            id_sf = f"{s}-{f}"
+                            if id_sn in f_prices and id_sf in f_prices:
+                                near = f_prices[id_sn]
+                                far = f_prices[id_sf]
+                                if near > far + 0.01:
+                                    lb_gaps.append({
+                                        "Origin(A)": path[i].title(),
+                                        "Destination(B)": path[j].title(),
+                                        "Following Stn(C)": path[k].title(),
+                                        "Price to B": near,
+                                        "Price to C": far,
+                                        "Difference": round(near - far, 2)
+                                    })
+            if lb_gaps:
+               st.dataframe(pd.DataFrame(lb_gaps).sort_values("Difference", ascending=False).head(30),
+                   column_config={"Price to B": st.column_config.NumberColumn(format="£%.2f"), "Price to C": st.column_config.NumberColumn(format="£%.2f"), "Difference": st.column_config.NumberColumn(format="£%.2f")},
+                   use_container_width=True, hide_index=True)
+            else:
+                st.info("No Long-Buying Opportunities Found")
+                
+            lb_before = 0
+            for path in SEQUENCES.values():
+                clean = [p.replace(" ", "") for p in path]
+                for i, s in enumerate(clean):
+                    for j, n in enumerate(clean[i+1:], i+1):
+                        id_sn = f"{s}-{n}"
+                        for k, f in enumerate(clean[j+1:], j+1):
+                            id_sf = f"{s}-{f}"
+                            if id_sn in base_prices and id_sf in base_prices:
+                                if base_prices[id_sn] > base_prices[id_sf] + 0.01:
+                                        lb_before += 1
+            lb_after = len(lb_gaps)
+            lb_solved = lb_before - lb_after
+            st.markdown(f"**Long-buying opportunities solved:** {lb_solved}<br>**Remaining:** {lb_after}", unsafe_allow_html=True)
 
-        lb_after = len(lb_gaps)
-        lb_solved = lb_before - lb_after
+        # --- ROW 3: JOURNEY & REVENUE IMPACT TABLES ---
+        st.divider()
+        r3c1, r3c2 = st.columns(2)
+        with r3c1:
+            st.subheader("Biggest Journey Changes")
+            st.caption("Flows with price changes affecting the highest volume of SDR journeys")
+            journey_changes = df[df['Diff'].abs() > 0.01].sort_values('SDR_Journeys', ascending=False).head(10)
+            st.dataframe(journey_changes[['Origin Description', 'Destination Description', 'SDR_Journeys', 'Original_SDR', 'New_SDR', 'Diff']], 
+                         column_config={
+                             "SDR_Journeys": st.column_config.NumberColumn("Journeys Affected", format="%,d"), 
+                             "Original_SDR": st.column_config.NumberColumn("Original Fare", format="£%.2f"), 
+                             "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f"), 
+                             "Diff": st.column_config.NumberColumn("Price Change", format="£%.2f")
+                         },
+                         use_container_width=True, hide_index=True)
+            
+            st.write("") 
+            m1, m2 = st.columns(2)
+            total_prev_journeys = df['SDR_Journeys'].sum()
+            total_new_journeys = df['Predicted_SDR_Journeys'].sum()
+            journey_delta = total_new_journeys - total_prev_journeys
+            
+            m1.metric(label="Previous Total Journeys", value=f"{total_prev_journeys:,.0f}")
+            m2.metric(label="New Total Journeys", value=f"{total_new_journeys:,.0f}", delta=f"{journey_delta:+,.0f}")
+                         
+        with r3c2:
+            st.subheader("Biggest Revenue Changes")
+            st.caption("Flows with the largest overall financial impact (SDR Volume × Price Change)")
+            revenue_changes = df.sort_values('Abs_Revenue_Impact', ascending=False).head(10)
+            st.dataframe(revenue_changes[['Origin Description', 'Destination Description', 'SDR_Journeys', 'Diff', 'Revenue_Impact']], 
+                         column_config={
+                             "SDR_Journeys": st.column_config.NumberColumn("SDR Volume", format="%,d"), 
+                             "Diff": st.column_config.NumberColumn("Price Change", format="£%.2f"), 
+                             "Revenue_Impact": st.column_config.NumberColumn("Revenue Impact", format="£%,d")
+                         },
+                         use_container_width=True, hide_index=True)
+            
+            st.write("") 
+            m3, m4 = st.columns(2)
+            total_prev_rev = df['Old_SDR_Revenue'].sum()
+            total_new_rev = df['New_SDR_Revenue'].sum()
+            revenue_delta = total_new_rev - total_prev_rev
+            
+            m3.metric(label="Previous Total Revenue", value=f"£{total_prev_rev:,.0f}")
+            m4.metric(label="New Total Revenue", value=f"£{total_new_rev:,.0f}", delta=f"£{revenue_delta:+,.0f}")
 
-        st.markdown(
-            (
-                f"**Long-buying opportunities solved:** {lb_solved}<br>"
-                f"**Remaining:** {lb_after}"
-            ),
-            unsafe_allow_html=True
-        )
-
-    # --- NEW ROW 3: JOURNEY & REVENUE IMPACT TABLES ---
-    st.divider()
-    r3c1, r3c2 = st.columns(2)
-    with r3c1:
-        st.subheader("Biggest Journey Changes")
-        st.caption("Flows with price changes affecting the highest volume of SDR journeys")
-        # Filter for rows where a price change exists, then pull the highest SDR volumes
-        journey_changes = df[df['Diff'].abs() > 0.01].sort_values('SDR_Journeys', ascending=False).head(10)
-        st.dataframe(journey_changes[['Origin Description', 'Destination Description', 'SDR_Journeys', 'Original_SDR', 'New_SDR', 'Diff']], 
-                     column_config={
-                         "SDR_Journeys": st.column_config.NumberColumn("Journeys Affected", format="%,d"), 
-                         "Original_SDR": st.column_config.NumberColumn("Original Fare", format="£%.2f"), 
-                         "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f"), 
-                         "Diff": st.column_config.NumberColumn("Price Change", format="£%.2f")
-                     },
+        st.divider()
+        st.subheader("Full Fare Summary")
+        st.dataframe(df[['Origin Description', 'Destination Description', 'Original_SDR', 'New_SDR', 'Status']], 
+                     column_config={"Original_SDR": st.column_config.NumberColumn("Original", format="£%.2f"), "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f")},
                      use_container_width=True, hide_index=True)
-        # --- NEW JOURNEY SUMMARY METRICS ---
-        st.write("") # Tiny spacer
-        m1, m2 = st.columns(2)
-        total_prev_journeys = df['SDR_Journeys'].sum()
-        total_new_journeys = df['Predicted_SDR_Journeys'].sum()
-        journey_delta = total_new_journeys - total_prev_journeys
-        
-        m1.metric(label="Previous Total Journeys", value=f"{total_prev_journeys:,.0f}")
-        m2.metric(label="New Total Journeys", value=f"{total_new_journeys:,.0f}", delta=f"{journey_delta:+,.0f}")
-                     
-    with r3c2:
-        st.subheader("Biggest Revenue Changes")
-        st.caption("Flows with the largest overall financial impact (SDR Volume × Price Change)")
-        # Sort by absolute revenue impact to bring major gains and drops to the top
-        revenue_changes = df.sort_values('Abs_Revenue_Impact', ascending=False).head(10)
-        st.dataframe(revenue_changes[['Origin Description', 'Destination Description', 'SDR_Journeys', 'Diff', 'Revenue_Impact']], 
-                     column_config={
-                         "SDR_Journeys": st.column_config.NumberColumn("SDR Volume", format="%,d"), 
-                         "Diff": st.column_config.NumberColumn("Price Change", format="£%.2f"), 
-                         "Revenue_Impact": st.column_config.NumberColumn("Revenue Impact", format="£%,d")
-                     },
-                     use_container_width=True, hide_index=True)
-        # --- NEW REVENUE SUMMARY METRICS ---
-        st.write("") # Tiny spacer
-        m3, m4 = st.columns(2)
-        total_prev_rev = df['Old_SDR_Revenue'].sum()
-        total_new_rev = df['New_SDR_Revenue'].sum()
-        revenue_delta = total_new_rev - total_prev_rev
-        
-        m3.metric(label="Previous Total Revenue", value=f"£{total_prev_rev:,.0f}")
-        m4.metric(label="New Total Revenue", value=f"£{total_new_rev:,.0f}", delta=f"£{revenue_delta:+,.0f}")
-
-    st.divider()
-    st.subheader("Full Fare Summary")
-    st.dataframe(df[['Origin Description', 'Destination Description', 'Original_SDR', 'New_SDR', 'Status']], 
-                 column_config={"Original_SDR": st.column_config.NumberColumn("Original", format="£%.2f"), "New_SDR": st.column_config.NumberColumn("New Fare", format="£%.2f")},
-                 use_container_width=True, hide_index=True)
-        
-    st.download_button("Download New Fares", convert_df_to_csv(df), "Final_Quartz_Fares.csv", "text/csv")
+            
+        st.download_button("Download New Fares", convert_df_to_csv(df), "Final_Quartz_Fares.csv", "text/csv")
+else:
+    st.info("Please upload fare spreadsheets in the sidebar to populate the dynamic optimization model dashboard.")
