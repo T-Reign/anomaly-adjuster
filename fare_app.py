@@ -283,35 +283,54 @@ if uploaded_files:
             default_idx = 1 if len(all_stations) > 1 else 0
             end_stn = st.selectbox("Select Destination Station:", all_stations, index=default_idx)
             
-        # 3. Background search engine: Discover ALL matching route sequences
-        matching_routes = {}  # Store all valid paths found
+        # 3. Background search engine: Discover matching route sequences and deduplicate identical slices
+        matching_routes = {}  # Format: { tuple_of_stations: [list_of_sequence_names] }
         
         for seq_name, seq_list in SEQUENCES.items():
             if start_stn in seq_list and end_stn in seq_list:
                 s_idx = seq_list.index(start_stn)
                 e_idx = seq_list.index(end_stn)
                 if s_idx < e_idx:  # Verifies correct travel direction
-                    matching_routes[seq_name] = seq_list[s_idx:e_idx + 1]
+                    # Slice out the exact path segment
+                    path_slice = tuple(seq_list[s_idx:e_idx + 1])
+                    
+                    # Group sequence names that produce the exact same physical path
+                    if path_slice not in matching_routes:
+                        matching_routes[path_slice] = []
+                    matching_routes[path_slice].append(seq_name)
         
-        # 4. Render visualizations based on route selection
+        # 4. Render visualizations based on truly unique route options
         if len(matching_routes) > 0:
-            # If multiple routes connect the stations, let the user choose which one to view!
+            # Case A: There are physically different paths (e.g., via Ascot vs. via Woking)
             if len(matching_routes) > 1:
+                # Build descriptive options for the radio buttons showing the user the path options
+                display_options = {}
+                for path_slice, seq_names in matching_routes.items():
+                    # Name the option based on the first sequence it found, or list them
+                    primary_name = seq_names[0]
+                    display_options[primary_name] = list(path_slice)
+                
                 selected_path_name = st.radio(
-                    "🚦 Multiple route corridors found! Select which route path to analyze:",
-                    list(matching_routes.keys()),
+                    "🚦 Multiple distinct route corridors found! Select which route path to analyze:",
+                    list(display_options.keys()),
                     horizontal=True
                 )
-            else:
-                selected_path_name = list(matching_routes.keys())[0]
+                active_route = display_options[selected_path_name]
+                st.success(f"**Route Discovered:** Analyzing via the **{selected_path_name}** corridor.")
                 
-            active_route = matching_routes[selected_path_name]
-            st.success(f"**Route Discovered:** Analyzing via the **{selected_path_name}** network corridor.")
+            # Case B: Only ONE physical path exists (even if it's shared across multiple master sequences!)
+            else:
+                active_route = list(matching_routes.keys())[0]
+                associated_sequences = matching_routes[active_route]
+                
+                # Show the primary sequence name it belongs to
+                st.success(f"**Route Discovered:** Analyzing via the **{associated_sequences[0]}** corridor.")
             
             # Master pricing maps for both old and new fares
             f_prices_new = df.set_index('Match_ID')['New_SDR'].to_dict()
             f_prices_old = df.set_index('Match_ID')['Original_SDR'].to_dict()
             
+            # ... [The rest of your chart rendering code continues exactly the same as before] ...
             start_clean = start_stn.replace(" ", "")
             end_clean = end_stn.replace(" ", "")
             
