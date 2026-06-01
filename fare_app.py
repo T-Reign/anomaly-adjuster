@@ -26,7 +26,7 @@ with col_text:
 
 # --- 1. SEQUENCES ---
 SEQUENCES = {
-    "Reading-Aldershot": ["READING", "EARLEY", "WINNERSH TRIANGLE", "WINNERSH", "WOKINGHAM", "BRACKNELL", "MARTINS HERON", "ASCOT", "BAGSHOT", "CAMBERLEY", "FRIMLEY", "ASH VALE", "ALDERSHOT", "FARNHAM", "BENTLEY", "ALTON"],
+    "Reading-Alton": ["READING", "EARLEY", "WINNERSH TRIANGLE", "WINNERSH", "WOKINGHAM", "BRACKNELL", "MARTINS HERON", "ASCOT", "BAGSHOT", "CAMBERLEY", "FRIMLEY", "ASH VALE", "ALDERSHOT", "FARNHAM", "BENTLEY", "ALTON"],
     "Ascot-Ashtead": ["ASCOT", "BAGSHOT", "CAMBERLEY", "FRIMLEY", "ASH VALE", "ALDERSHOT", "ASH", "WANBOROUGH", "GUILDFORD", "LONDON ROAD (GUILDFORD)", "CLANDON", "HORSLEY", "EFFINGHAM JUNCTION", "BOOKHAM", "LEATHERHEAD", "ASHTEAD"],
     "Leatherhead-Dorking": ["LEATHERHEAD", "BOX HILL & WESTHUMBLE", "DORKING"],
     "London-Inbound": ["ZONE R1256 LONDON", "LONDON BR", "QUEENSTOWN ROAD(BATTERSEA)", "CLAPHAM JUNCTION LONDON", "VIRGINIA WATER", "LONGCROSS", "SUNNINGDALE", "ASCOT", "BAGSHOT"],
@@ -253,13 +253,12 @@ if uploaded_files:
         df['Abs_Revenue_Impact'] = df['Revenue_Impact'].abs()
 
         # --- 4. DASHBOARD ---
-        
         # =========================================================================
-        # --- NEW PLACEMENT: ROUTE PROFILE VISUALIZER CHART (TOP OF WORKSPACE) ---
+        # --- UPDATED: DUAL ROUTE VISUALIZATION & COMPARATOR HUB (TOP OF WORKSPACE) ---
         # =========================================================================
         st.divider()
-        st.subheader("Route Profile Visualizer")
-        st.caption("Select a predefined line of route to visualize intermediate split fare profiles against the direct fare.")
+        st.subheader("Route Analytics Hub")
+        st.caption("Select a predefined line of route to analyze intermediate split opportunities and compare old vs. new price profiles.")
         
         selected_seq_name = st.selectbox("Choose a Line of Route:", list(SEQUENCES.keys()))
         station_sequence = SEQUENCES[selected_seq_name]
@@ -274,14 +273,20 @@ if uploaded_files:
                 end_idx = station_sequence.index(end_stn)
             
             active_route = station_sequence[start_idx:end_idx + 1]
-            f_prices_chart = df.set_index('Match_ID')['New_SDR'].to_dict()
+            
+            # Master pricing maps for both old and new fares
+            f_prices_new = df.set_index('Match_ID')['New_SDR'].to_dict()
+            f_prices_old = df.set_index('Match_ID')['Original_SDR'].to_dict()
             
             start_clean = start_stn.replace(" ", "")
             end_clean = end_stn.replace(" ", "")
-            direct_fare_id = f"{start_clean}-{end_clean}"
-            direct_fare = f_prices_chart.get(direct_fare_id, 0.0)
             
-            chart_data = []
+            # Direct fare properties for the split-ticket bar baseline
+            direct_fare_id = f"{start_clean}-{end_clean}"
+            direct_fare_new = f_prices_new.get(direct_fare_id, 0.0)
+            
+            # --- 1. GATHER DATA FOR SPLIT BAR CHART ---
+            chart_data_splits = []
             for i in range(1, len(active_route) - 1):
                 mid_stn = active_route[i]
                 mid_clean = mid_stn.replace(" ", "")
@@ -289,51 +294,114 @@ if uploaded_files:
                 leg1_id = f"{start_clean}-{mid_clean}"
                 leg2_id = f"{mid_clean}-{end_clean}"
                 
-                leg1_price = f_prices_chart.get(leg1_id, 0.0)
-                leg2_price = f_prices_chart.get(leg2_id, 0.0)
+                leg1_price = f_prices_new.get(leg1_id, 0.0)
+                leg2_price = f_prices_new.get(leg2_id, 0.0)
                 combined_split_fare = leg1_price + leg2_price
                 
                 if leg1_price > 0 and leg2_price > 0:
-                    chart_data.append({
+                    chart_data_splits.append({
                         "Intermediate Station": mid_stn.title(),
                         "Split Fare (£)": combined_split_fare,
                         "Leg 1 Price": leg1_price,
                         "Leg 2 Price": leg2_price
                     })
 
-            if chart_data and direct_fare > 0:
-                df_chart = pd.DataFrame(chart_data)
-                import plotly.graph_objects as go
+            # --- 2. GATHER DATA FOR OLD VS NEW LINE COMPARATOR ---
+            chart_data_comparison = []
+            for stn in active_route[1:]:  # Track fares stepping away from the origin
+                stn_clean = stn.replace(" ", "")
+                flow_id = f"{start_clean}-{stn_clean}"
                 
-                fig = go.Figure()
-                fig.add_trace(go.Bar(
-                    x=df_chart["Intermediate Station"],
-                    y=df_chart["Split Fare (£)"],
-                    name="Combined Split Price",
-                    marker_color='rgb(55, 83, 109)',
-                    customdata=df_chart[["Leg 1 Price", "Leg 2 Price"]],
-                    hovertemplate="<b>Split Station: %{x}</b><br>Total Split Cost: £%{y:.2f}<br>Leg 1: £%{customdata[0]:.2f}<br>Leg 2: £%{customdata[1]:.2f}<extra></extra>"
-                ))
+                old_f = f_prices_old.get(flow_id, 0.0)
+                new_f = f_prices_new.get(flow_id, 0.0)
                 
-                fig.add_shape(
-                    type="line", x0=-0.5, y0=direct_fare, x1=len(df_chart) - 0.5, y1=direct_fare,
-                    line=dict(color="Crimson", width=3, dash="dash"),
-                )
-                
-                fig.add_trace(go.Scatter(
-                    x=[df_chart["Intermediate Station"].iloc[0]], y=[direct_fare],
-                    mode="lines", name=f"Direct Fare (£{direct_fare:.2f})",
-                    line=dict(color="Crimson", width=3, dash="dash"), showlegend=True
-                ))
-                
-                fig.update_layout(
-                    title=f"Split Fare Profile: {start_stn.title()} to {end_stn.title()}",
-                    xaxis_title="Intermediate Splitting Points", yaxis_title="Total Fare Price (£)",
-                    barmode='group', template="plotly_white", hovermode="x unified"
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info(f"Not enough structural matching matrix rows to verify step links between {start_stn.title()} and {end_stn.title()}.")
+                if old_f > 0 or new_f > 0:
+                    chart_data_comparison.append({
+                        "Station": stn.title(),
+                        "Old Fare (£)": old_f,
+                        "New Fare (£)": new_f,
+                        "Change (£)": new_f - old_f
+                    })
+
+            # --- 3. RENDER VISUALIZATIONS SIDE-BY-SIDE ---
+            import plotly.graph_objects as go
+            gc1, gc2 = st.columns(2)
+            
+            # Left Column: Split Opportunity Bars
+            with gc1:
+                if chart_data_splits and direct_fare_new > 0:
+                    df_splits = pd.DataFrame(chart_data_splits)
+                    fig_splits = go.Figure()
+                    
+                    fig_splits.add_trace(go.Bar(
+                        x=df_splits["Intermediate Station"],
+                        y=df_splits["Split Fare (£)"],
+                        name="Combined Split Price",
+                        marker_color='rgb(55, 83, 109)',
+                        customdata=df_splits[["Leg 1 Price", "Leg 2 Price"]],
+                        hovertemplate="<b>Split Station: %{x}</b><br>Total Split Cost: £%{y:.2f}<br>Leg 1: £%{customdata[0]:.2f}<br>Leg 2: £%{customdata[1]:.2f}<extra></extra>"
+                    ))
+                    
+                    fig_splits.add_shape(
+                        type="line", x0=-0.5, y0=direct_fare_new, x1=len(df_splits) - 0.5, y1=direct_fare_new,
+                        line=dict(color="Crimson", width=3, dash="dash"),
+                    )
+                    
+                    fig_splits.add_trace(go.Scatter(
+                        x=[df_splits["Intermediate Station"].iloc[0]], y=[direct_fare_new],
+                        mode="lines", name=f"Direct Fare (£{direct_fare_new:.2f})",
+                        line=dict(color="Crimson", width=3, dash="dash"), showlegend=True
+                    ))
+                    
+                    fig_splits.update_layout(
+                        title=f"Split Ticket Check: {start_stn.title()} to {end_stn.title()}",
+                        xaxis_title="Intermediate Splitting Points", yaxis_title="Total Fare Price (£)",
+                        template="plotly_white", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    st.plotly_chart(fig_splits, use_container_width=True)
+                else:
+                    st.info("Select a broader sequence segment to show internal split points.")
+            
+            # Right Column: Old vs New Price Line Profile (Your New Idea!)
+            with gc2:
+                if chart_data_comparison:
+                    df_comp = pd.DataFrame(chart_data_comparison)
+                    fig_comp = go.Figure()
+                    
+                    # Blue Line for Old Fares
+                    fig_comp.add_trace(go.Scatter(
+                        x=df_comp["Station"],
+                        y=df_comp["Old Fare (£)"],
+                        mode="lines+markers",
+                        name="Old Fare",
+                        line=dict(color="#1f77b4", width=3),
+                        marker=dict(size=8),
+                        hovertemplate="<b>To: %{x}</b><br>Old Fare: £%{y:.2f}<extra></extra>"
+                    ))
+                    
+                    # Red Line for New Fares
+                    fig_comp.add_trace(go.Scatter(
+                        x=df_comp["Station"],
+                        y=df_comp["New Fare (£)"],
+                        mode="lines+markers",
+                        name="New Fare",
+                        line=dict(color="#d62728", width=3),
+                        marker=dict(size=8),
+                        customdata=df_comp["Change (£)"],
+                        hovertemplate="<b>To: %{x}</b><br>New Fare: £%{y:.2f}<br>Price Change: £%{customdata:+.2f}<extra></extra>"
+                    ))
+                    
+                    fig_comp.update_layout(
+                        title=f"Fare Progression Matrix Outward from {start_stn.title()}",
+                        xaxis_title="Destination Milestone Stops", yaxis_title="Fare Price (£)",
+                        template="plotly_white", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                        hovermode="x unified"
+                    )
+                    st.plotly_chart(fig_comp, use_container_width=True)
+                else:
+                    st.info("No matching price comparison points found for this segment.")
+                    
+        # =========================================================================
         # =========================================================================
 
         st.divider()
