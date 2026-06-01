@@ -370,7 +370,25 @@ if uploaded_files:
             direct_fare_id = f"{start_clean}-{end_clean}"
             direct_fare_new = f_prices_new.get(direct_fare_id, 0.0)
             
-            # --- GATHER DATA FOR SPLIT BAR CHART ---
+            # --- 1. DETERMINE MIXTURE PRODUCTS BASED ON CURRENT AIRLINE MODE ---
+            if chosen_ticket in ["SDR", "CDR"]:
+                alt_product = "CDR"
+            elif chosen_ticket in ["SDS", "CDS"]:
+                alt_product = "CDS"
+            else:
+                alt_product = chosen_ticket  # Fallback for 7DS or un-mixable tickets
+
+            sdr_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
+            f_prices_new = df.set_index('Match_ID')['Display_New_Fare'].to_dict()
+            f_prices_old = df.set_index('Match_ID')['Display_Original_Fare'].to_dict()
+            
+            start_clean = start_stn.replace(" ", "")
+            end_clean = end_stn.replace(" ", "")
+            
+            direct_fare_id = f"{start_clean}-{end_clean}"
+            direct_fare_new = f_prices_new.get(direct_fare_id, 0.0)
+            
+            # --- 2. GATHER DATA FOR MULTI-PRODUCT MIXED SPLIT BAR CHART ---
             chart_data_splits = []
             for i in range(1, len(active_route) - 1):
                 mid_stn = active_route[i]
@@ -379,18 +397,92 @@ if uploaded_files:
                 leg1_id = f"{start_clean}-{mid_clean}"
                 leg2_id = f"{mid_clean}-{end_clean}"
                 
-                leg1_price = f_prices_new.get(leg1_id, 0.0)
-                leg2_price = f_prices_new.get(leg2_id, 0.0)
-                combined_split_fare = leg1_price + leg2_price
+                # Fetch base SDR structures to derive the product variations
+                base_sdr_l1 = sdr_prices.get(leg1_id, 0.0)
+                base_sdr_l2 = sdr_prices.get(leg2_id, 0.0)
                 
-                if leg1_price > 0 and leg2_price > 0:
+                if base_sdr_l1 > 0 and base_sdr_l2 > 0:
+                    # Calculate product variations dynamically using the shared derive_fare helper
+                    l1_primary = derive_fare(base_sdr_l1, chosen_ticket)
+                    l2_primary = derive_fare(base_sdr_l2, chosen_ticket)
+                    
+                    l1_alt = derive_fare(base_sdr_l1, alt_product)
+                    l2_alt = derive_fare(base_sdr_l2, alt_product)
+                    
+                    # Compute Split Strategies
+                    pure_split = l1_primary + l2_primary
+                    mix_strategy_a = l1_primary + l2_alt
+                    mix_strategy_b = l1_alt + l2_primary
+                    
                     chart_data_splits.append({
                         "Intermediate Station": mid_stn.title(),
-                        "Split Fare (£)": combined_split_fare,
-                        "Leg 1 Price": leg1_price,
-                        "Leg 2 Price": leg2_price
+                        "Pure Split": pure_split,
+                        "Pure L1": l1_primary, "Pure L2": l2_primary,
+                        
+                        "Mix A": mix_strategy_a,
+                        "Mix A L1": l1_primary, "Mix A L2": l2_alt,
+                        
+                        "Mix B": mix_strategy_b,
+                        "Mix B L1": l1_alt, "Mix B L2": l2_primary
                     })
 
+            # --- 3. RENDERING THE DYNAMIC BAR GRAPH WITH THREE OPTIONS ---
+            gc1, gc2 = st.columns(2)
+            
+            with gc1:
+                if chart_data_splits and direct_fare_new > 0:
+                    df_splits = pd.DataFrame(chart_data_splits)
+                    fig_splits = go.Figure()
+                    
+                    # Strategy 1: Pure Split (e.g. SDR + SDR)
+                    fig_splits.add_trace(go.Bar(
+                        x=df_splits["Intermediate Station"], y=df_splits["Pure Split"],
+                        name=f"Pure Split ({chosen_ticket} + {chosen_ticket})", 
+                        marker_color='rgb(55, 83, 109)',
+                        customdata=df_splits[["Pure L1", "Pure L2"]],
+                        hovertemplate="<b>Split Point: %{x}</b><br>Total Combined Cost: £%{y:.2f}<br>Leg 1 ("+chosen_ticket+"): £%{customdata[0]:.2f}<br>Leg 2 ("+chosen_ticket+"): £%{customdata[1]:.2f}<extra></extra>"
+                    ))
+                    
+                    # Strategy 2: Mixed Combo A (e.g. SDR + CDR)
+                    if chosen_ticket != alt_product:
+                        fig_splits.add_trace(go.Bar(
+                            x=df_splits["Intermediate Station"], y=df_splits["Mix A"],
+                            name=f"Mixed Combo A ({chosen_ticket} + {alt_product})", 
+                            marker_color='rgb(26, 118, 141)',
+                            customdata=df_splits[["Mix A L1", "Mix A L2"]],
+                            hovertemplate="<b>Split Point: %{x}</b><br>Total Combined Cost: £%{y:.2f}<br>Leg 1 ("+chosen_ticket+"): £%{customdata[0]:.2f}<br>Leg 2 ("+alt_product+"): £%{customdata[1]:.2f}<extra></extra>"
+                        ))
+                        
+                        # Strategy 3: Mixed Combo B (e.g. CDR + SDR)
+                        fig_splits.add_trace(go.Bar(
+                            x=df_splits["Intermediate Station"], y=df_splits["Mix B"],
+                            name=f"Mixed Combo B ({alt_product} + {chosen_ticket})", 
+                            marker_color='rgb(158, 201, 225)',
+                            customdata=df_splits[["Mix B L1", "Mix B L2"]],
+                            hovertemplate="<b>Split Point: %{x}</b><br>Total Combined Cost: £%{y:.2f}<br>Leg 1 ("+alt_product+"): £%{customdata[0]:.2f}<br>Leg 2 ("+chosen_ticket+"): £%{customdata[1]:.2f}<extra></extra>"
+                        ))
+                    
+                    # Horizontal Line representing the Direct Direct Fare baseline
+                    fig_splits.add_shape(
+                        type="line", x0=-0.5, y0=direct_fare_new, x1=len(df_splits) - 0.5, y1=direct_fare_new,
+                        line=dict(color="Crimson", width=3, dash="dash"),
+                    )
+                    
+                    fig_splits.add_trace(go.Scatter(
+                        x=[df_splits["Intermediate Station"].iloc[0]], y=[direct_fare_new],
+                        mode="lines", name=f"Direct Direct {chosen_ticket} Fare (£{direct_fare_new:.2f})",
+                        line=dict(color="Crimson", width=3, dash="dash"), showlegend=True
+                    ))
+                    
+                    fig_splits.update_layout(
+                        title=f"Multi-Product Split-Ticket Vulnerability Matrix ({start_stn.title()} to {end_stn.title()})",
+                        xaxis_title="Intermediate Splitting Points", yaxis_title="Total Multi-Ticket Cost (£)",
+                        barmode='group', template="plotly_white", 
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    st.plotly_chart(fig_splits, use_container_width=True)
+                else:
+                    st.info(f"No internal split points with complete fare combinations found for {chosen_ticket} tickets along this segment.")
             # --- GATHER DATA FOR OLD VS NEW LINE COMPARATOR ---
             chart_data_comparison = []
             for stn in active_route[1:]:
