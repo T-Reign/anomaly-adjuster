@@ -283,18 +283,35 @@ if uploaded_files:
             default_idx = 1 if len(all_stations) > 1 else 0
             end_stn = st.selectbox("Select Destination Station:", all_stations, index=default_idx)
             
-        # 3. Background search engine: Discover matching route sequence and verify direction
-        matching_seq_name = None
-        active_route = []
+        # 3. Background search engine: Discover ALL matching route sequences
+        matching_routes = {}  # Store all valid paths found
         
         for seq_name, seq_list in SEQUENCES.items():
             if start_stn in seq_list and end_stn in seq_list:
                 s_idx = seq_list.index(start_stn)
                 e_idx = seq_list.index(end_stn)
-                if s_idx < e_idx:  # Verifies correct travel direction down the corridor
-                    matching_seq_name = seq_name
-                    active_route = seq_list[s_idx:e_idx + 1]
-                    break
+                if s_idx < e_idx:  # Verifies correct travel direction
+                    matching_routes[seq_name] = seq_list[s_idx:e_idx + 1]
+        
+        # 4. Render visualizations based on route selection
+        if len(matching_routes) > 0:
+            # If multiple routes connect the stations, let the user choose which one to view!
+            if len(matching_routes) > 1:
+                selected_path_name = st.radio(
+                    "🚦 Multiple route corridors found! Select which route path to analyze:",
+                    list(matching_routes.keys()),
+                    horizontal=True
+                )
+            else:
+                selected_path_name = list(matching_routes.keys())[0]
+                
+            active_route = matching_routes[selected_path_name]
+            st.success(f"**Route Discovered:** Analyzing via the **{selected_path_name}** network corridor.")
+            
+            # Master pricing maps for both old and new fares
+            f_prices_new = df.set_index('Match_ID')['New_SDR'].to_dict()
+            f_prices_old = df.set_index('Match_ID')['Original_SDR'].to_dict()
+            
         
         # 4. Render visualizations if a matching route is successfully discovered
         if matching_seq_name:
