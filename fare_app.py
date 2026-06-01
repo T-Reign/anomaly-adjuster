@@ -34,7 +34,7 @@ SEQUENCES = {
     "Reading-Alton": ["READING", "EARLEY", "WINNERSH TRIANGLE", "WINNERSH", "WOKINGHAM", "BRACKNELL", "MARTINS HERON", "ASCOT", "BAGSHOT", "CAMBERLEY", "FRIMLEY", "ASH VALE", "ALDERSHOT", "FARNHAM", "BENTLEY", "ALTON"],
     "Reading-Guilford": ["READING", "EARLEY", "WINNERSH TRIANGLE", "WINNERSH", "WOKINGHAM", "BRACKNELL", "MARTINS HERON", "ASCOT", "BAGSHOT", "CAMBERLEY", "FRIMLEY", "ASH VALE", "ALDERSHOT", "ASH", "WANBOROUGH", "GUILDFORD"],
     "Bagshot-Ashtead": ["BAGSHOT", "CAMBERLEY", "FRIMLEY", "ASH VALE", "ALDERSHOT", "ASH", "WANBOROUGH", "GUILDFORD", "LONDON ROAD (GUILDFORD)", "CLANDON", "HORSLEY", "EFFINGHAM JUNCTION", "BOOKHAM", "LEATHERHEAD", "ASHTEAD"],
-    "Alton-Ashtead": ["ALTON", "BENTLEY", "FARNHAM", "ALDERSHOT", "ASH", "WANBOROUGH", "GUILDFORD", "LONDON ROAD (GUILASS)", "CLANDON", "HORSLEY", "EFFINGHAM JUNCTION", "BOOKHAM", "LEATHERHEAD", "ASHTEAD"],
+    "Alton-Ashtead": ["ALTON", "BENTLEY", "FARNHAM", "ALDERSHOT", "ASH", "WANBOROUGH", "GUILDFORD", "LONDON ROAD (GUILDFORD)", "CLANDON", "HORSLEY", "EFFINGHAM JUNCTION", "BOOKHAM", "LEATHERHEAD", "ASHTEAD"],
     "Bagshot-Dorking": ["BAGSHOT", "CAMBERLEY", "FRIMLEY", "ASH VALE", "ALDERSHOT", "ASH", "WANBOROUGH", "GUILDFORD", "LONDON ROAD (GUILDFORD)", "CLANDON", "HORSLEY", "EFFINGHAM JUNCTION", "BOOKHAM", "LEATHERHEAD", "BOX HILL & WESTHUMBLE", "DORKING"],
     "Alton-Dorking": ["ALTON", "BENTLEY", "FARNHAM", "ALDERSHOT", "ASH", "WANBOROUGH", "GUILDFORD", "LONDON ROAD (GUILDFORD)", "CLANDON", "HORSLEY", "EFFINGHAM JUNCTION", "BOOKHAM", "LEATHERHEAD", "BOX HILL & WESTHUMBLE", "DORKING"],
     "Via Surbiton": ["ALTON", "BENTLEY", "FARNHAM", "ALDERSHOT", "ASH VALE", "BROOKWOOD", "WOKING", "WEST BYFLEET", "BYFLEET & NEW HAW", "WEYBRIDGE", "WALTON-ON-THAMES", "HERSHAM", "ESHER", "SURBITON", "HINCHLEY WOOD", "CLAYGATE", "OXSHOTT"],
@@ -143,11 +143,14 @@ if uploaded_files:
         df['Match_ID'] = df['Origin_N'] + "-" + df['Dest_N']
         
         df['Original_SDR'] = pd.to_numeric(df.iloc[:, 9], errors='coerce').fillna(0.0)
+        
+        # Check if 7DS features exist in columns (column index 13 or named '7DS'); fallback if not present
         df['Original_7DS'] = pd.to_numeric(df['7DS'], errors='coerce').fillna(0.0) if '7DS' in df.columns else pd.to_numeric(df.iloc[:, 13], errors='coerce').fillna(0.0)
         
         df = df.sort_values('Original_SDR', ascending=False).drop_duplicates(subset=['Match_ID']).copy()
         
         raw_price_map = df.set_index('Match_ID')['Original_SDR'].to_dict()
+        raw_7ds_map = df.set_index('Match_ID')['Original_7DS'].to_dict()
 
         if all_jr_dfs:
             df_jr = pd.concat(all_jr_dfs, ignore_index=True)
@@ -176,6 +179,7 @@ if uploaded_files:
             total_jr_summary = df_jr.groupby('Match_ID')['JOURNEYS'].sum().reset_index()
             total_jr_summary.columns = ['Match_ID', 'Total_Journeys']
             
+            # Dynamically aggregate filter metrics based on selected context ticket type
             df_filtered_jr = df_jr[df_jr['Standard_Product'] == chosen_ticket]
             filtered_jr_summary = df_filtered_jr.groupby('Match_ID').agg({
                 'JOURNEYS': 'sum',
@@ -267,22 +271,15 @@ if uploaded_files:
                                     curr[id_near] = max(curr[id_far], df.loc[df['Match_ID']==id_near, 'Floor_Price'].values[0])
         df['New_SDR'] = df['Match_ID'].map(curr)
 
-        # -----------------------------------------------------------------
-        # FIXED: CRITICAL BI-DIRECTIONAL SINGLE-LEG PRICING STABILIZATION PASS
-        # -----------------------------------------------------------------
         if slp_enabled:
             final_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
             for mid in list(final_prices.keys()):
                 o, d = mid.split("-")
                 rev = f"{d}-{o}"
                 if rev in final_prices:
-                    # Capture the highest outward/inward smoothed price profile
                     unified = max(final_prices[mid], final_prices[rev])
-                    
-                    # Align bounds safety constraints
                     c1, f1 = df.loc[df['Match_ID']==mid, ['Ceiling_Price','Floor_Price']].values[0]
                     c2, f2 = df.loc[df['Match_ID']==rev, ['Ceiling_Price','Floor_Price']].values[0]
-                    
                     final_val = min(max(unified, min(f1, f2)), max(c1, c2))
                     final_prices[mid] = final_prices[rev] = round_up(final_val, sdr_rounding)
             df['New_SDR'] = df['Match_ID'].map(final_prices)
@@ -290,9 +287,10 @@ if uploaded_files:
         # -----------------------------------------------------------------
         # GLOBAL STRUCTURAL SHIFT: Transform Baseline SDR into Target Ticket Type
         # -----------------------------------------------------------------
-        df['Original_7DS'] = df['Original_7DS'].fillna(df['Original_SDR'] * 3.5)
-        df['New_7DS'] = df['Original_7DS'].copy() 
+        df['Original_7DS'] = df['Original_7DS'].fillna(df['Original_SDR'] * 3.5) # Fallback heuristic if missing
+        df['New_7DS'] = df['Original_7DS'].copy() # 7DS updates can align with baseline values 
         
+        # Apply the commercial formula to reconstruct the data frame contextually
         df['Display_Original_Fare'] = df.apply(lambda r: derive_fare(r['Original_SDR'], chosen_ticket, r['Original_7DS']), axis=1)
         df['Display_New_Fare'] = df.apply(lambda r: derive_fare(r['New_SDR'], chosen_ticket, r['New_7DS']), axis=1)
 
