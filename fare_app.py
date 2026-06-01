@@ -26,6 +26,10 @@ with col_text:
 
 # --- 1. SEQUENCES ---
 SEQUENCES = {
+    "Wanborough Main Line": ["ASH", "WANBOROUGH", "GUILDFORD", "WORPLESDON", "WOKING", "WEST BYFLEET", "BYFLEET & NEW HAW", "WEYBRIDGE", "WALTON-ON-THAMES", "HERSHAM", "ESHER", "SURBITON", "CLAPHAM JUNCTION LONDON", "QUEENSTOWN ROAD(BATTERSEA)", "LONDON BR", "ZONE R1256 LONDON"],
+    "Alton Main Line": ["ALTON", "BENTLEY", "FARNHAM", "ALDERSHOT", "ASH VALE", "BROOKWOOD", "WOKING", "WEST BYFLEET", "BYFLEET & NEW HAW", "WEYBRIDGE", "WALTON-ON-THAMES", "HERSHAM", "ESHER", "SURBITON", "CLAPHAM JUNCTION LONDON", "QUEENSTOWN ROAD(BATTERSEA)", "LONDON BR", "ZONE R1256 LONDON"],
+    "Via Woking": ["BAGSHOT", "CAMBERLEY", "FRIMLEY", "ASH VALE", "BROOKWOOD", "WOKING", "WEST BYFLEET", "BYFLEET & NEW HAW", "WEYBRIDGE", "WALTON-ON-THAMES", "HERSHAM", "ESHER", "SURBITON", "CLAPHAM JUNCTION LONDON", "QUEENSTOWN ROAD(BATTERSEA)", "LONDON BR", "ZONE R1256 LONDON"],
+    "Via Ascot": ["ZONE R1256 LONDON", "LONDON BR", "QUEENSTOWN ROAD(BATTERSEA)", "CLAPHAM JUNCTION LONDON", "VIRGINIA WATER", "LONGCROSS", "SUNNINGDALE", "ASCOT", "BAGSHOT", "CAMBERLEY", "FRIMLEY", "ASH VALE", "ALDERSHOT", "FARNHAM", "BENTLEY", "ALTON"],
     "Reading-Alton": ["READING", "EARLEY", "WINNERSH TRIANGLE", "WINNERSH", "WOKINGHAM", "BRACKNELL", "MARTINS HERON", "ASCOT", "BAGSHOT", "CAMBERLEY", "FRIMLEY", "ASH VALE", "ALDERSHOT", "FARNHAM", "BENTLEY", "ALTON"],
     "Reading-Guilford": ["READING", "EARLEY", "WINNERSH TRIANGLE", "WINNERSH", "WOKINGHAM", "BRACKNELL", "MARTINS HERON", "ASCOT", "BAGSHOT", "CAMBERLEY", "FRIMLEY", "ASH VALE", "ALDERSHOT", "ASH", "WANBOROUGH", "GUILDFORD"],
     "Bagshot-Ashtead": ["BAGSHOT", "CAMBERLEY", "FRIMLEY", "ASH VALE", "ALDERSHOT", "ASH", "WANBOROUGH", "GUILDFORD", "LONDON ROAD (GUILDFORD)", "CLANDON", "HORSLEY", "EFFINGHAM JUNCTION", "BOOKHAM", "LEATHERHEAD", "ASHTEAD"],
@@ -34,10 +38,6 @@ SEQUENCES = {
     "Alton-Dorking": ["ALTON", "BENTLEY", "FARNHAM", "ALDERSHOT", "ASH", "WANBOROUGH", "GUILDFORD", "LONDON ROAD (GUILDFORD)", "CLANDON", "HORSLEY", "EFFINGHAM JUNCTION", "BOOKHAM", "LEATHERHEAD", "BOX HILL & WESTHUMBLE", "DORKING"],
     "Via Surbiton": ["ALTON", "BENTLEY", "FARNHAM", "ALDERSHOT", "ASH VALE", "BROOKWOOD", "WOKING", "WEST BYFLEET", "BYFLEET & NEW HAW", "WEYBRIDGE", "WALTON-ON-THAMES", "HERSHAM", "ESHER", "SURBITON", "HINCHLEY WOOD", "CLAYGATE", "OXSHOTT"],
     "Via Walton-On-Thames": ["BAGSHOT", "CAMBERLEY", "FRIMLEY", "ASH VALE", "BROOKWOOD", "WOKING", "WEST BYFLEET", "BYFLEET & NEW HAW", "WEYBRIDGE", "WALTON-ON-THAMES", "HERSHAM", "ESHER", "SURBITON", "HINCHLEY WOOD", "CLAYGATE", "OXSHOTT"],
-    "Via Ascot": ["ZONE R1256 LONDON", "LONDON BR", "QUEENSTOWN ROAD(BATTERSEA)", "CLAPHAM JUNCTION LONDON", "VIRGINIA WATER", "LONGCROSS", "SUNNINGDALE", "ASCOT", "BAGSHOT", "CAMBERLEY", "FRIMLEY", "ASH VALE", "ALDERSHOT", "FARNHAM", "BENTLEY", "ALTON"],
-    "Wanborough Main Line": ["ASH", "WANBOROUGH", "GUILDFORD", "WORPLESDON", "WOKING", "WEST BYFLEET", "BYFLEET & NEW HAW", "WEYBRIDGE", "WALTON-ON-THAMES", "HERSHAM", "ESHER", "SURBITON", "CLAPHAM JUNCTION LONDON", "QUEENSTOWN ROAD(BATTERSEA)", "LONDON BR", "ZONE R1256 LONDON"],
-    "Alton Main Line": ["ALTON", "BENTLEY", "FARNHAM", "ALDERSHOT", "ASH VALE", "BROOKWOOD", "WOKING", "WEST BYFLEET", "BYFLEET & NEW HAW", "WEYBRIDGE", "WALTON-ON-THAMES", "HERSHAM", "ESHER", "SURBITON", "CLAPHAM JUNCTION LONDON", "QUEENSTOWN ROAD(BATTERSEA)", "LONDON BR", "ZONE R1256 LONDON"],
-    "Via Woking": ["BAGSHOT", "CAMBERLEY", "FRIMLEY", "ASH VALE", "BROOKWOOD", "WOKING", "WEST BYFLEET", "BYFLEET & NEW HAW", "WEYBRIDGE", "WALTON-ON-THAMES", "HERSHAM", "ESHER", "SURBITON", "CLAPHAM JUNCTION LONDON", "QUEENSTOWN ROAD(BATTERSEA)", "LONDON BR", "ZONE R1256 LONDON"],
     "Via Guildford": ["ALTON", "BENTLEY", "FARNHAM", "ALDERSHOT", "ASH", "WANBOROUGH", "GUILDFORD", "LONDON ROAD (GUILDFORD)", "CLANDON", "HORSLEY", "EFFINGHAM JUNCTION", "COBHAM & STOKE D'ABERNON", "OXSHOTT", "CLAYGATE", "HINCHLEY WOOD"],
     "Via Clandon": ["BAGSHOT", "CAMBERLEY", "FRIMLEY", "ASH VALE", "ALDERSHOT", "ASH", "WANBOROUGH", "GUILDFORD", "LONDON ROAD (GUILDFORD)", "CLANDON", "HORSLEY", "EFFINGHAM JUNCTION", "COBHAM & STOKE D'ABERNON", "OXSHOTT", "CLAYGATE", "HINCHLEY WOOD"],
     "Brookwood-Wanborough": ["BROOKWOOD", "ASH VALE", "ALDERSHOT", "ASH", "WANBOROUGH"],
@@ -283,21 +283,28 @@ if uploaded_files:
             default_idx = 1 if len(all_stations) > 1 else 0
             end_stn = st.selectbox("Select Destination Station:", all_stations, index=default_idx)
             
-        # 3. Background search engine: Discover matching route sequences and deduplicate identical slices
+        # 3. Background search engine: Discover matching route sequences (Supports Forward & Reverse travel)
         matching_routes = {}  # Format: { tuple_of_stations: [list_of_sequence_names] }
         
         for seq_name, seq_list in SEQUENCES.items():
             if start_stn in seq_list and end_stn in seq_list:
                 s_idx = seq_list.index(start_stn)
                 e_idx = seq_list.index(end_stn)
-                if s_idx < e_idx:  # Verifies correct travel direction
-                    # Slice out the exact path segment
+                
+                # Check travel direction and slice appropriately
+                if s_idx < e_idx:
+                    # Forward direction
                     path_slice = tuple(seq_list[s_idx:e_idx + 1])
+                    direction_label = ""
+                else:
+                    # Reverse direction: slice from end to start, then flip the list using [::-1]
+                    path_slice = tuple(seq_list[e_idx:s_idx + 1][::-1])
+                    direction_label = " (Reverse)"
                     
-                    # Group sequence names that produce the exact same physical path
-                    if path_slice not in matching_routes:
-                        matching_routes[path_slice] = []
-                    matching_routes[path_slice].append(seq_name)
+                # Group sequence names that produce the exact same physical path
+                if path_slice not in matching_routes:
+                    matching_routes[path_slice] = []
+                matching_routes[path_slice].append(f"{seq_name}{direction_label}")
         
         # 4. Render visualizations based on truly unique route options
         if len(matching_routes) > 0:
@@ -306,7 +313,7 @@ if uploaded_files:
                 # Build descriptive options for the radio buttons showing the user the path options
                 display_options = {}
                 for path_slice, seq_names in matching_routes.items():
-                    # Name the option based on the first sequence it found, or list them
+                    # Name the option based on the first sequence it found
                     primary_name = seq_names[0]
                     display_options[primary_name] = list(path_slice)
                 
@@ -318,7 +325,7 @@ if uploaded_files:
                 active_route = display_options[selected_path_name]
                 st.success(f"**Route Discovered:** Analyzing via the **{selected_path_name}** corridor.")
                 
-            # Case B: Only ONE physical path exists (even if it's shared across multiple master sequences!)
+            # Case B: Only ONE physical path exists (Deduplicated across sequences)
             else:
                 active_route = list(matching_routes.keys())[0]
                 associated_sequences = matching_routes[active_route]
