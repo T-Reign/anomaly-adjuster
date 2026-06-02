@@ -777,13 +777,19 @@ if uploaded_files:
         with r3c1:
             st.subheader("Biggest Journey Volume Changes")
             st.caption(f"Flows with price steps affecting highest volume of **{chosen_ticket}** journeys")
-            journey_changes = df[df['Diff'].abs() > 0.01].sort_values('Filtered_Journeys', ascending=False).head(10)
-            st.dataframe(journey_changes[['Origin Description', 'Destination Description', 'Filtered_Journeys', 'Display_Original_Fare', 'Display_New_Fare', 'Diff']], 
+            
+            # Slice and make a copy to add our cleanly formatted text column
+            journey_changes = df[df['Diff'].abs() > 0.01].sort_values('Filtered_Journeys', ascending=False).head(10).copy()
+            journey_changes['Price_Change_Text'] = journey_changes['Diff'].apply(
+                lambda x: f"+£{x:.2f}" if x > 0 else f"-£{abs(x):.2f}" if x < 0 else "£0.00" if pd.notna(x) else ""
+            )
+            
+            st.dataframe(journey_changes[['Origin Description', 'Destination Description', 'Filtered_Journeys', 'Display_Original_Fare', 'Display_New_Fare', 'Price_Change_Text']], 
                          column_config={
                              "Filtered_Journeys": st.column_config.NumberColumn("Journeys Affected", format="%,d"), 
                              "Display_Original_Fare": st.column_config.NumberColumn("Original Fare", format="£%.2f"), 
                              "Display_New_Fare": st.column_config.NumberColumn("New Fare", format="£%.2f"), 
-                             "Diff": st.column_config.NumberColumn("Price Change", format="£%.2f")
+                             "Price_Change_Text": st.column_config.TextColumn("Price Change")
                          }, use_container_width=True, hide_index=True)
             
             st.write("") 
@@ -798,12 +804,21 @@ if uploaded_files:
         with r3c2:
             st.subheader("Biggest Financial Revenue Impacts")
             st.caption(f"Flows with the largest currency variance ({chosen_ticket} Segment Volume × Delta)")
-            revenue_changes = df.sort_values('Abs_Revenue_Impact', ascending=False).head(10)
-            st.dataframe(revenue_changes[['Origin Description', 'Destination Description', 'Filtered_Journeys', 'Diff', 'Revenue_Impact']], 
+            
+            # Slice and make a copy to add clean currency text columns
+            revenue_changes = df.sort_values('Abs_Revenue_Impact', ascending=False).head(10).copy()
+            revenue_changes['Price_Change_Text'] = revenue_changes['Diff'].apply(
+                lambda x: f"+£{x:.2f}" if x > 0 else f"-£{abs(x):.2f}" if x < 0 else "£0.00" if pd.notna(x) else ""
+            )
+            revenue_changes['Revenue_Impact_Text'] = revenue_changes['Revenue_Impact'].apply(
+                lambda x: f"+£{x:,.0f}" if x > 0 else f"-£{abs(x):,.0f}" if x < 0 else "£0" if pd.notna(x) else ""
+            )
+            
+            st.dataframe(revenue_changes[['Origin Description', 'Destination Description', 'Filtered_Journeys', 'Price_Change_Text', 'Revenue_Impact_Text']], 
                          column_config={
                              "Filtered_Journeys": st.column_config.NumberColumn("Ticket Volume", format="%,d"), 
-                             "Diff": st.column_config.NumberColumn("Price Change", format="£%.2f"), 
-                             "Revenue_Impact": st.column_config.NumberColumn("Revenue Impact", format="£%,d")
+                             "Price_Change_Text": st.column_config.TextColumn("Price Change"), 
+                             "Revenue_Impact_Text": st.column_config.TextColumn("Revenue Impact")
                          }, use_container_width=True, hide_index=True)
             
             st.write("") 
@@ -812,8 +827,11 @@ if uploaded_files:
             total_new_rev = df['New_Ticket_Revenue'].sum()
             revenue_delta = total_new_rev - total_prev_rev
             
+            # Pre-format the delta metric to keep the minus sign cleanly on the outside
+            revenue_delta_str = f"+£{revenue_delta:,.0f}" if revenue_delta > 0 else f"-£{abs(revenue_delta):,.0f}" if revenue_delta < 0 else "£0"
+            
             m3.metric(label=f"Previous {chosen_ticket} Yield", value=f"£{total_prev_rev:,.0f}")
-            m4.metric(label=f"New Predicted {chosen_ticket} Yield", value=f"£{total_new_rev:,.0f}", delta=f"£{revenue_delta:+,.0f}")
+            m4.metric(label=f"New Predicted {chosen_ticket} Yield", value=f"£{total_new_rev:,.0f}", delta=revenue_delta_str)
 
         st.divider()
         st.subheader("Full Context Fare Summary")
