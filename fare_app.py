@@ -677,7 +677,7 @@ if uploaded_files:
                         st.plotly_chart(fig_comp, use_container_width=True)
                     else:
                         st.info("No historical comparison data rows found for this selection.")
-            else:
+                else:
                 st.info(f"No predefined line of route connects **{start_stn.title()}** to **{end_stn.title()}** in that direction.")
             
                 # =========================================================================
