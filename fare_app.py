@@ -629,6 +629,12 @@ if uploaded_files:
             with gc2:
                 if chart_data_comparison:
                     df_comp = pd.DataFrame(chart_data_comparison)
+                    
+                    # 1. NEW STRIP: Build a pre-formatted string with the sign on the outside of the symbol
+                    df_comp["Variance_Text"] = df_comp["Change (£)"].apply(
+                        lambda x: f"+£{x:.2f}" if x > 0 else f"-£{abs(x):.2f}" if x < 0 else "£0.00" if pd.notna(x) else ""
+                    )
+                    
                     fig_comp = go.Figure()
                     
                     # SMART FIX: Only plot the blue line if there is at least one non-zero historical fare on this route segment
@@ -652,8 +658,8 @@ if uploaded_files:
                     fig_comp.add_trace(go.Scatter(
                         x=df_comp["Station"], y=df_comp["New Fare (£)"], mode="lines+markers",
                         name=f"New Optimized {chosen_ticket}", line=dict(color="#d62728", width=3), marker=dict(size=8),
-                        customdata=df_comp["Change (£)"],
-                        hovertemplate="<b>To: %{x}</b><br>New Fare: £%{y:.2f}<br>True Variance: £%{customdata:+.2f}<extra></extra>" if df_comp["Change (£)"].notna().any() else "<b>To: %{x}</b><br>New Fare: £%{y:.2f}<extra></extra>"
+                        customdata=df_comp["Variance_Text"], # 2. UPDATED: Points to our newly formatted text field
+                        hovertemplate="<b>To: %{x}</b><br>New Fare: £%{y:.2f}<br>True Variance: %{customdata}<extra></extra>" if df_comp["Change (£)"].notna().any() else "<b>To: %{x}</b><br>New Fare: £%{y:.2f}<extra></extra>" # 3. UPDATED: Simplified clean token string display
                     ))
                     
                     fig_comp.update_layout(
