@@ -568,209 +568,219 @@ if uploaded_files:
                         "Change (£)": round(new_f - today_f, 2) if today_f > 0 else None
                     })
 
-            gc1, gc2 = st.columns(2)
-            
-            with gc1:
-                if chart_data_splits and direct_fare_new > 0:
-                    df_splits = pd.DataFrame(chart_data_splits)
-                    fig_splits = go.Figure()
-                    
-                    # Track 1: Pure Splits (e.g., 7DS + 7DS or SDR + SDR)
-                    fig_splits.add_trace(go.Bar(
-                        x=df_splits["Intermediate Station"], y=df_splits["Pure Split"],
-                        name=f"Pure Split ({chosen_ticket} + {chosen_ticket})", 
-                        marker_color='rgb(55, 83, 109)',
-                        customdata=df_splits[["Pure L1", "Pure L2"]],
-                        hovertemplate="<b>Split Station: %{x}</b><br>Total Split Cost: £%{y:.2f}<br>Leg 1 ("+chosen_ticket+"): £%{customdata[0]:.2f}<br>Leg 2 ("+chosen_ticket+"): £%{customdata[1]:.2f}<extra></extra>"
-                    ))
-                    
-                    # Only add Mixed Product combos if dealing with walk-up tickers (skip season passes)
-                    if chosen_ticket != "7DS" and chosen_ticket != alt_product:
-                        # Track 2: Product Mixture Combo A
+           # 🟢 INITIALIZE TABS FOR DASHBOARD SEGREGATION
+            tab1, tab2 = st.tabs(["📊 Hub Analytics", "🔍 Market Opportunities"])
+
+            # 🟢 START OF TAB 1 CONTENTS (Analytics & Top 10 Tables)
+            with tab1:
+                gc1, gc2 = st.columns(2)
+                
+                with gc1:
+                    if chart_data_splits and direct_fare_new > 0:
+                        df_splits = pd.DataFrame(chart_data_splits)
+                        fig_splits = go.Figure()
+                        
+                        # Track 1: Pure Splits (e.g., 7DS + 7DS or SDR + SDR)
                         fig_splits.add_trace(go.Bar(
-                            x=df_splits["Intermediate Station"], y=df_splits["Mix A"],
-                            name=f"Mixed Combo A ({chosen_ticket} + {alt_product})", 
-                            marker_color='rgb(26, 118, 141)',
-                            customdata=df_splits[["Mix A L1", "Mix A L2"]],
-                            hovertemplate="<b>Split Station: %{x}</b><br>Total Split Cost: £%{y:.2f}<br>Leg 1 ("+chosen_ticket+"): £%{customdata[0]:.2f}<br>Leg 2 ("+alt_product+"): £%{customdata[1]:.2f}<extra></extra>"
+                            x=df_splits["Intermediate Station"], y=df_splits["Pure Split"],
+                            name=f"Pure Split ({chosen_ticket} + {chosen_ticket})", 
+                            marker_color='rgb(55, 83, 109)',
+                            customdata=df_splits[["Pure L1", "Pure L2"]],
+                            hovertemplate="<b>Split Station: %{x}</b><br>Total Split Cost: £%{y:.2f}<br>Leg 1 ("+chosen_ticket+"): £%{customdata[0]:.2f}<br>Leg 2 ("+chosen_ticket+"): £%{customdata[1]:.2f}<extra></extra>"
                         ))
                         
-                        # Track 3: Product Mixture Combo B
-                        fig_splits.add_trace(go.Bar(
-                            x=df_splits["Intermediate Station"], y=df_splits["Mix B"],
-                            name=f"Mixed Combo B ({alt_product} + {chosen_ticket})", 
-                            marker_color='rgb(158, 201, 225)',
-                            customdata=df_splits[["Mix B L1", "Mix B L2"]],
-                            hovertemplate="<b>Split Station: %{x}</b><br>Total Split Cost: £%{y:.2f}<br>Leg 1 ("+alt_product+"): £%{customdata[1]:.2f}<br>Leg 2 ("+chosen_ticket+"): £%{customdata[1]:.2f}<extra></extra>"
+                        # Only add Mixed Product combos if dealing with walk-up tickers (skip season passes)
+                        if chosen_ticket != "7DS" and chosen_ticket != alt_product:
+                            # Track 2: Product Mixture Combo A
+                            fig_splits.add_trace(go.Bar(
+                                x=df_splits["Intermediate Station"], y=df_splits["Mix A"],
+                                name=f"Mixed Combo A ({chosen_ticket} + {alt_product})", 
+                                marker_color='rgb(26, 118, 141)',
+                                customdata=df_splits[["Mix A L1", "Mix A L2"]],
+                                hovertemplate="<b>Split Station: %{x}</b><br>Total Split Cost: £%{y:.2f}<br>Leg 1 ("+chosen_ticket+"): £%{customdata[0]:.2f}<br>Leg 2 ("+alt_product+"): £%{customdata[1]:.2f}<extra></extra>"
+                            ))
+                            
+                            # Track 3: Product Mixture Combo B
+                            fig_splits.add_trace(go.Bar(
+                                x=df_splits["Intermediate Station"], y=df_splits["Mix B"],
+                                name=f"Mixed Combo B ({alt_product} + {chosen_ticket})", 
+                                marker_color='rgb(158, 201, 225)',
+                                customdata=df_splits[["Mix B L1", "Mix B L2"]],
+                                hovertemplate="<b>Split Station: %{x}</b><br>Total Split Cost: £%{y:.2f}<br>Leg 1 ("+alt_product+"): £%{customdata[1]:.2f}<br>Leg 2 ("+chosen_ticket+"): £%{customdata[1]:.2f}<extra></extra>"
+                            ))
+                        
+                        # Fixed baseline horizontal benchmark line representing the Direct selection fare
+                        fig_splits.add_shape(
+                            type="line", x0=-0.5, y0=direct_fare_new, x1=len(df_splits) - 0.5, y1=direct_fare_new,
+                            line=dict(color="Crimson", width=3, dash="dash"),
+                        )
+                        
+                        fig_splits.add_trace(go.Scatter(
+                            x=[df_splits["Intermediate Station"].iloc[0]], y=[direct_fare_new],
+                            mode="lines", name=f"Direct {chosen_ticket} Fare (£{direct_fare_new:.2f})",
+                            line=dict(color="Crimson", width=3, dash="dash"), showlegend=True
                         ))
-                    
-                    # Fixed baseline horizontal benchmark line representing the Direct selection fare
-                    fig_splits.add_shape(
-                        type="line", x0=-0.5, y0=direct_fare_new, x1=len(df_splits) - 0.5, y1=direct_fare_new,
-                        line=dict(color="Crimson", width=3, dash="dash"),
-                    )
-                    
-                    fig_splits.add_trace(go.Scatter(
-                        x=[df_splits["Intermediate Station"].iloc[0]], y=[direct_fare_new],
-                        mode="lines", name=f"Direct {chosen_ticket} Fare (£{direct_fare_new:.2f})",
-                        line=dict(color="Crimson", width=3, dash="dash"), showlegend=True
-                    ))
-                    
-                    fig_splits.update_layout(
-                        title=f"{chosen_ticket} Split & Product Mix Check: {start_stn.title()} to {end_stn.title()}",
-                        xaxis_title="Intermediate Splitting Points", yaxis_title="Total Fare Price (£)",
-                        barmode='group', template="plotly_white", 
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                    )
-                    st.plotly_chart(fig_splits, use_container_width=True)
-                else:
-                    st.info(f"No internal split points with complete fare combinations found for {chosen_ticket} tickets along this segment.")
-            
-            with gc2:
-                if chart_data_comparison:
-                    df_comp = pd.DataFrame(chart_data_comparison)
-                    
-                    # 1. NEW STRIP: Build a pre-formatted string with the sign on the outside of the symbol
-                    df_comp["Variance_Text"] = df_comp["Change (£)"].apply(
-                        lambda x: f"+£{x:.2f}" if x > 0 else f"-£{abs(x):.2f}" if x < 0 else "£0.00" if pd.notna(x) else ""
-                    )
-                    
-                    fig_comp = go.Figure()
-                    
-                    # SMART FIX: Only plot the blue line if there is at least one non-zero historical fare on this route segment
-                    if df_comp["Old Fare (£)"].notna().any():
-                        fig_comp.add_trace(go.Scatter(
-                            x=df_comp["Station"], y=df_comp["Old Fare (£)"], mode="lines+markers",
-                            name="Fares Today", line=dict(color="#1f77b4", width=3), marker=dict(size=8),
-                            connectgaps=True, # If a random station in the middle is 0, it neatly connects the rest
-                            hovertemplate="<b>To: %{x}</b><br>Fares Today: £%{y:.2f}<extra></extra>"
-                        ))
-                    
-                    # Orange Dotted Line: Super Off-Peak Reference
-                    if chosen_ticket in ["CDR", "CDS"] and df_comp["Old Super Off-Peak (£)"].notna().any():
-                        fig_comp.add_trace(go.Scatter(
-                            x=df_comp["Station"], y=df_comp["Old Super Off-Peak (£)"], mode="lines+markers",
-                            name="Old Super Off-Peak (Withdrawn)", line=dict(color="orange", width=2, dash="dot"), marker=dict(size=6),
-                            hovertemplate="<b>To: %{x}</b><br>Withdrawn SOP Fare: £%{y:.2f}<extra></extra>"
-                        ))
-                    
-                    # Red Line: New Optimized Fares
-                    fig_comp.add_trace(go.Scatter(
-                        x=df_comp["Station"], y=df_comp["New Fare (£)"], mode="lines+markers",
-                        name=f"New Optimized {chosen_ticket}", line=dict(color="#d62728", width=3), marker=dict(size=8),
-                        customdata=df_comp["Variance_Text"], # 2. UPDATED: Points to our newly formatted text field
-                        hovertemplate="<b>To: %{x}</b><br>New Fare: £%{y:.2f}<br>True Variance: %{customdata}<extra></extra>" if df_comp["Change (£)"].notna().any() else "<b>To: %{x}</b><br>New Fare: £%{y:.2f}<extra></extra>" # 3. UPDATED: Simplified clean token string display
-                    ))
-                    
-                    fig_comp.update_layout(
-                        title=f"{chosen_ticket} Progression Outward from {start_stn.title()}",
-                        xaxis_title="Destination Milestone Stops", yaxis_title="Fare Price (£)",
-                        template="plotly_white", 
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                        hovermode="x unified"
-                    )
-                    st.plotly_chart(fig_comp, use_container_width=True)
-                else:
-                    st.info("No historical comparison data rows found for this selection.")
-        else:
-            st.info(f"No predefined line of route connects **{start_stn.title()}** to **{end_stn.title()}** in that direction.")
-        # =========================================================================
-        # --- BOTTOM AGGREGATIONS AND METRICS TABLES ---
-        # =========================================================================
-        st.divider()
-        r1c1, r1c2 = st.columns(2)
-        with r1c1:
-            st.subheader(f"Top 10 Price Increases ({chosen_ticket})")
-            st.dataframe(df.sort_values('Opt_Increase', ascending=False).head(10)[['Origin Description', 'Destination Description', 'Display_Original_Fare', 'Display_New_Fare', 'Opt_Increase']], 
-                         column_config={"Display_Original_Fare": st.column_config.NumberColumn("Baseline", format="£%.2f"), "Display_New_Fare": st.column_config.NumberColumn("New Fare", format="£%.2f"), "Opt_Increase": st.column_config.NumberColumn("Increase", format="£%.2f")}, 
-                         use_container_width=True, hide_index=True)
-        with r1c2:
-            st.subheader(f"Top 10 Price Decreases ({chosen_ticket})")
-            dec_disp = df.sort_values('Diff', ascending=True).head(10).copy()
-            dec_disp['Diff'] = dec_disp['Diff'].abs()
-            st.dataframe(dec_disp[['Origin Description', 'Destination Description', 'Display_Original_Fare', 'Display_New_Fare', 'Diff']], 
-                         column_config={"Display_Original_Fare": st.column_config.NumberColumn("Original", format="£%.2f"), "Display_New_Fare": st.column_config.NumberColumn("New Fare", format="£%.2f"), "Diff": st.column_config.NumberColumn("Decrease", format="-£%.2f")}, 
-                         use_container_width=True, hide_index=True)
-
-        st.divider()
-        r2c1, r2c2 = st.columns(2)
-        with r2c1:
-            st.subheader("Remaining Split-Ticketing Opportunities")
-            f_prices = df.set_index('Match_ID')['Display_New_Fare'].to_dict()
-            base_prices = df.set_index('Match_ID')['Display_Original_Fare'].to_dict()
-            n_map = df.set_index('Origin_N')['Origin Description'].to_dict()
-            gaps = []
-            for A in adj:
-                for B in adj[A]:
-                    if B not in adj: continue
-                    for C in adj[B]:
-                        id_ac, id_ab, id_bc = f"{A}-{C}", f"{A}-{B}", f"{B}-{C}"
-                        if id_ac in f_prices:
-                            thru, s_sum = f_prices[id_ac], f_prices[id_ab] + f_prices.get(id_bc, 0)
-                            if thru > (s_sum + 0.01):
-                                gaps.append({
-                                    "Journey": f"{str(n_map.get(A, A)).title()} to {str(n_map.get(C, C)).title()}", 
-                                    "Split At": str(n_map.get(B, B)).title(), 
-                                    "New Fare": thru, "Split Fare": s_sum, "Difference": round(thru - s_sum, 2)
-                                })
-            if gaps:
-                st.dataframe(pd.DataFrame(gaps).sort_values('Difference', ascending=False).head(300), 
-                             column_config={"New Fare": st.column_config.NumberColumn(format="£%.2f"), "Split Fare": st.column_config.NumberColumn(format="£%.2f"), "Difference": st.column_config.NumberColumn(format="£%.2f")},
-                             use_container_width=True, hide_index=True)
-            else:
-                st.success("No Split-Ticket Opportunities Found")
-                 
-            split_before = 0
-            for A in adj:
-                for B in adj[A]:
-                    if B not in adj: continue
-                    for C in adj[B]:
-                        id_ac, id_ab, id_bc = f"{A}-{C}", f"{A}-{B}", f"{B}-{C}"
-                        if id_ac in base_prices:
-                            thru = base_prices[id_ac]
-                            s_sum = base_prices[id_ab] + base_prices.get(id_bc, 0)
-                            if thru > s_sum + 0.01: split_before += 1
-
-            split_after = len(gaps)
-            st.markdown(f"**Split-ticket opportunities solved:** {split_before - split_after}<br>**Remaining:** {split_after}", unsafe_allow_html=True)
-            
-        with r2c2:
-            st.subheader("Remaining Long-Buying Opportunities")
-            lb_gaps = []
-            for path in SEQUENCES.values():
-                clean_path = [p.replace(" ", "") for p in path]
-                for i, s in enumerate(clean_path):
-                    for j, n in enumerate(clean_path[i+1:], i+1):
-                        id_sn = f"{s}-{n}"
-                        for k, f in enumerate(clean_path[j+1:], j+1):
-                            id_sf = f"{s}-{f}"
-                            if id_sn in f_prices and id_sf in f_prices:
-                                near, far = f_prices[id_sn], f_prices[id_sf]
-                                if near > far + 0.01:
-                                    lb_gaps.append({
-                                        "Origin(A)": path[i].title(), "Destination(B)": path[j].title(), "Following Stn(C)": path[k].title(),
-                                        "Price to B": near, "Price to C": far, "Difference": round(near - far, 2)
-                                    })
-            if lb_gaps:
-               st.dataframe(pd.DataFrame(lb_gaps).sort_values("Difference", ascending=False).head(30),
-                   column_config={"Price to B": st.column_config.NumberColumn(format="£%.2f"), "Price to C": st.column_config.NumberColumn(format="£%.2f"), "Difference": st.column_config.NumberColumn(format="£%.2f")},
-                   use_container_width=True, hide_index=True)
-            else:
-                st.info("No Long-Buying Opportunities Found")
+                        
+                        fig_splits.update_layout(
+                            title=f"{chosen_ticket} Split & Product Mix Check: {start_stn.title()} to {end_stn.title()}",
+                            xaxis_title="Intermediate Splitting Points", yaxis_title="Total Fare Price (£)",
+                            barmode='group', template="plotly_white", 
+                            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                        )
+                        st.plotly_chart(fig_splits, use_container_width=True)
+                    else:
+                        st.info(f"No internal split points with complete fare combinations found for {chosen_ticket} tickets along this segment.")
                 
-            lb_before = 0
-            for path in SEQUENCES.values():
-                clean = [p.replace(" ", "") for p in path]
-                for i, s in enumerate(clean):
-                    for j, n in enumerate(clean[i+1:], i+1):
-                        id_sn = f"{s}-{n}"
-                        for k, f in enumerate(clean[j+1:], j+1):
-                            id_sf = f"{s}-{f}"
-                            if id_sn in base_prices and id_sf in base_prices:
-                                if base_prices[id_sn] > base_prices[id_sf] + 0.01: lb_before += 1
-            lb_after = len(lb_gaps)
-            st.markdown(f"**Long-buying opportunities solved:** {lb_before - lb_after}<br>**Remaining:** {lb_after}", unsafe_allow_html=True)
+                with gc2:
+                    if chart_data_comparison:
+                        df_comp = pd.DataFrame(chart_data_comparison)
+                        
+                        # 1. NEW STRIP: Build a pre-formatted string with the sign on the outside of the symbol
+                        df_comp["Variance_Text"] = df_comp["Change (£)"].apply(
+                            lambda x: f"+£{x:.2f}" if x > 0 else f"-£{abs(x):.2f}" if x < 0 else "£0.00" if pd.notna(x) else ""
+                        )
+                        
+                        fig_comp = go.Figure()
+                        
+                        # SMART FIX: Only plot the blue line if there is at least one non-zero historical fare on this route segment
+                        if df_comp["Old Fare (£)"].notna().any():
+                            fig_comp.add_trace(go.Scatter(
+                                x=df_comp["Station"], y=df_comp["Old Fare (£)"], mode="lines+markers",
+                                name="Fares Today", line=dict(color="#1f77b4", width=3), marker=dict(size=8),
+                                connectgaps=True, # If a random station in the middle is 0, it neatly connects the rest
+                                hovertemplate="<b>To: %{x}</b><br>Fares Today: £%{y:.2f}<extra></extra>"
+                            ))
+                        
+                        # Orange Dotted Line: Super Off-Peak Reference
+                        if chosen_ticket in ["CDR", "CDS"] and df_comp["Old Super Off-Peak (£)"].notna().any():
+                            fig_comp.add_trace(go.Scatter(
+                                x=df_comp["Station"], y=df_comp["Old Super Off-Peak (£)"], mode="lines+markers",
+                                name="Old Super Off-Peak (Withdrawn)", line=dict(color="orange", width=2, dash="dot"), marker=dict(size=6),
+                                hovertemplate="<b>To: %{x}</b><br>Withdrawn SOP Fare: £%{y:.2f}<extra></extra>"
+                            ))
+                        
+                        # Red Line: New Optimized Fares
+                        fig_comp.add_trace(go.Scatter(
+                            x=df_comp["Station"], y=df_comp["New Fare (£)"], mode="lines+markers",
+                            name=f"New Optimized {chosen_ticket}", line=dict(color="#d62728", width=3), marker=dict(size=8),
+                            customdata=df_comp["Variance_Text"], # 2. UPDATED: Points to our newly formatted text field
+                            hovertemplate="<b>To: %{x}</b><br>New Fare: £%{y:.2f}<br>True Variance: %{customdata}<extra></extra>" if df_comp["Change (£)"].notna().any() else "<b>To: %{x}</b><br>New Fare: £%{y:.2f}<extra></extra>" # 3. UPDATED: Simplified clean token string display
+                        ))
+                        
+                        fig_comp.update_layout(
+                            title=f"{chosen_ticket} Progression Outward from {start_stn.title()}",
+                            xaxis_title="Destination Milestone Stops", yaxis_title="Fare Price (£)",
+                            template="plotly_white", 
+                            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                            hovermode="x unified"
+                        )
+                        st.plotly_chart(fig_comp, use_container_width=True)
+                    else:
+                        st.info("No historical comparison data rows found for this selection.")
 
+            # 🟢 START OF TAB 2 CONTENTS (Market Opportunities & Top 10 Tables)
+            with tab2:
+                
+                # =========================================================================
+                # --- TOP AGGREGATIONS AND METRICS TABLES ---
+                # =========================================================================
+                r2c1, r2c2 = st.columns(2)
+                with r2c1:
+                    st.subheader(f"Top 10 Price Increases ({chosen_ticket})")
+                    st.dataframe(df.sort_values('Opt_Increase', ascending=False).head(10)[['Origin Description', 'Destination Description', 'Display_Original_Fare', 'Display_New_Fare', 'Opt_Increase']], 
+                                 column_config={"Display_Original_Fare": st.column_config.NumberColumn("Baseline", format="£%.2f"), "Display_New_Fare": st.column_config.NumberColumn("New Fare", format="£%.2f"), "Opt_Increase": st.column_config.NumberColumn("Increase", format="£%.2f")}, 
+                                 use_container_width=True, hide_index=True)
+                with r2c2:
+                    st.subheader(f"Top 10 Price Decreases ({chosen_ticket})")
+                    dec_disp = df.sort_values('Diff', ascending=True).head(10).copy()
+                    dec_disp['Diff'] = dec_disp['Diff'].abs()
+                    st.dataframe(dec_disp[['Origin Description', 'Destination Description', 'Display_Original_Fare', 'Display_New_Fare', 'Diff']], 
+                                 column_config={"Display_Original_Fare": st.column_config.NumberColumn("Original", format="£%.2f"), "Display_New_Fare": st.column_config.NumberColumn("New Fare", format="£%.2f"), "Diff": st.column_config.NumberColumn("Decrease", format="-£%.2f")}, 
+                                 use_container_width=True, hide_index=True)
+
+                # =========================================================================
+                # --- BOTTOM ANOMALY OPPORTUNITIES ---
+                # =========================================================================
+                st.divider()
+                r2c3, r2c4 = st.columns(2)
+                with r2c3:
+                    st.subheader("Remaining Split-Ticketing Opportunities")
+                    f_prices = df.set_index('Match_ID')['Display_New_Fare'].to_dict()
+                    base_prices = df.set_index('Match_ID')['Display_Original_Fare'].to_dict()
+                    n_map = df.set_index('Origin_N')['Origin Description'].to_dict()
+                    gaps = []
+                    for A in adj:
+                        for B in adj[A]:
+                            if B not in adj: continue
+                            for C in adj[B]:
+                                id_ac, id_ab, id_bc = f"{A}-{C}", f"{A}-{B}", f"{B}-{C}"
+                                if id_ac in f_prices:
+                                    thru, s_sum = f_prices[id_ac], f_prices[id_ab] + f_prices.get(id_bc, 0)
+                                    if thru > (s_sum + 0.01):
+                                        gaps.append({
+                                            "Journey": f"{str(n_map.get(A, A)).title()} to {str(n_map.get(C, C)).title()}", 
+                                            "Split At": str(n_map.get(B, B)).title(), 
+                                            "New Fare": thru, "Split Fare": s_sum, "Difference": round(thru - s_sum, 2)
+                                        })
+                    if gaps:
+                        st.dataframe(pd.DataFrame(gaps).sort_values('Difference', ascending=False).head(300), 
+                                     column_config={"New Fare": st.column_config.NumberColumn(format="£%.2f"), "Split Fare": st.column_config.NumberColumn(format="£%.2f"), "Difference": st.column_config.NumberColumn(format="£%.2f")},
+                                     use_container_width=True, hide_index=True)
+                    else:
+                        st.success("No Split-Ticket Opportunities Found")
+                         
+                    split_before = 0
+                    for A in adj:
+                        for B in adj[A]:
+                            if B not in adj: continue
+                            for C in adj[B]:
+                                id_ac, id_ab, id_bc = f"{A}-{C}", f"{A}-{B}", f"{B}-{C}"
+                                if id_ac in base_prices:
+                                    thru = base_prices[id_ac]
+                                    s_sum = base_prices[id_ab] + base_prices.get(id_bc, 0)
+                                    if thru > s_sum + 0.01: split_before += 1
+        
+                    split_after = len(gaps)
+                    st.markdown(f"**Split-ticket opportunities solved:** {split_before - split_after}<br>**Remaining:** {split_after}", unsafe_allow_html=True)
+                    
+                with r2c4:
+                    st.subheader("Remaining Long-Buying Opportunities")
+                    lb_gaps = []
+                    for path in SEQUENCES.values():
+                        clean_path = [p.replace(" ", "") for p in path]
+                        for i, s in enumerate(clean_path):
+                            for j, n in enumerate(clean_path[i+1:], i+1):
+                                id_sn = f"{s}-{n}"
+                                for k, f in enumerate(clean_path[j+1:], j+1):
+                                    id_sf = f"{s}-{f}"
+                                    if id_sn in f_prices and id_sf in f_prices:
+                                        near, far = f_prices[id_sn], f_prices[id_sf]
+                                        if near > far + 0.01:
+                                            lb_gaps.append({
+                                                "Origin(A)": path[i].title(), "Destination(B)": path[j].title(), "Following Stn(C)": path[k].title(),
+                                                "Price to B": near, "Price to C": far, "Difference": round(near - far, 2)
+                                            })
+                    if lb_gaps:
+                       st.dataframe(pd.DataFrame(lb_gaps).sort_values("Difference", ascending=False).head(30),
+                           column_config={"Price to B": st.column_config.NumberColumn(format="£%.2f"), "Price to C": st.column_config.NumberColumn(format="£%.2f"), "Difference": st.column_config.NumberColumn(format="£%.2f")},
+                           use_container_width=True, hide_index=True)
+                    else:
+                        st.info("No Long-Buying Opportunities Found")
+                        
+                    lb_before = 0
+                    for path in SEQUENCES.values():
+                        clean = [p.replace(" ", "") for p in path]
+                        for i, s in enumerate(clean):
+                            for j, n in enumerate(clean[i+1:], i+1):
+                                id_sn = f"{s}-{n}"
+                                for k, f in enumerate(clean[j+1:], j+1):
+                                    id_sf = f"{s}-{f}"
+                                    if id_sn in base_prices and id_sf in base_prices:
+                                        if base_prices[id_sn] > base_prices[id_sf] + 0.01: lb_before += 1
+                    lb_after = len(lb_gaps)
+                    st.markdown(f"**Long-buying opportunities solved:** {lb_before - lb_after}<br>**Remaining:** {lb_after}", unsafe_allow_html=True)
+
+        # 🟢 FALL BACK OUT OF TABS STRUCTURE FOR MAIN SUMMARY BASE
         # --- ROW 3: JOURNEY & REVENUE IMPACT TABLES ---
         st.divider()
         r3c1, r3c2 = st.columns(2)
