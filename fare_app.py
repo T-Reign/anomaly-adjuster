@@ -524,83 +524,82 @@ if uploaded_files:
 
             # --- GATHER DATA FOR OLD VS NEW LINE COMPARATOR ---
             chart_data_comparison = []
-            
-            # Create absolute raw maps directly from the uploaded spreadsheet cells (True Today baselines)
-            raw_sdr_old_map = df.set_index('Match_ID')['Original_SDR'].to_dict()
-            raw_7ds_old_map = df.set_index('Match_ID')['Original_7DS'].to_dict()
-            raw_sop_old_map = df.set_index('Match_ID')['Old_Super_OffPeak'].to_dict()
+            f_prices_sop = df.set_index('Match_ID')['Old_Super_OffPeak'].to_dict() # Map SOP fares
             
             for stn in active_route[1:]:
                 stn_clean = stn.replace(" ", "")
                 flow_id = f"{start_clean}-{stn_clean}"
                 
+                old_f = f_prices_old.get(flow_id, 0.0)
                 new_f = f_prices_new.get(flow_id, 0.0)
+                sop_f = f_prices_sop.get(flow_id, 0.0)
                 
-                # Step 1: Calculate the absolute RAW 'Today' baseline for the chosen ticket type
-                if chosen_ticket == "SDR":
-                    today_f = raw_sdr_old_map.get(flow_id, 0.0)
-                elif chosen_ticket == "7DS":
-                    today_f = raw_7ds_old_map.get(flow_id, 0.0)
-                else:
-                    # For SDS, CDS, and CDR: Derive using the raw spreadsheet SDR cell *before* rounding/SLP alterations
-                    raw_base_sdr = raw_sdr_old_map.get(flow_id, 0.0)
-                    today_f = derive_fare(raw_base_sdr, chosen_ticket)
-                
-                # Step 2: Extract the Super Off-Peak baseline if applicable
-                sop_f = raw_sop_old_map.get(flow_id, 0.0)
-                
-                if today_f > 0 or new_f > 0:
+                if old_f > 0 or new_f > 0:
                     chart_data_comparison.append({
                         "Station": stn.title(),
-                        "Old Fare (£)": today_f,
+                        "Old Fare (£)": old_f,
                         "New Fare (£)": new_f,
                         "Old Super Off-Peak (£)": sop_f if sop_f > 0 else None,
-                        "Change (£)": new_f - today_f
+                        "Change (£)": new_f - old_f
                     })
 
             gc1, gc2 = st.columns(2)
             
-            with gc2:
-                if chart_data_comparison:
-                    df_comp = pd.DataFrame(chart_data_comparison)
-                    fig_comp = go.Figure()
+            with gc1:
+                if chart_data_splits and direct_fare_new > 0:
+                    df_splits = pd.DataFrame(chart_data_splits)
+                    fig_splits = go.Figure()
                     
-                    # 1. Historical Base Line (True status-quo today)
-                    fig_comp.add_trace(go.Scatter(
-                        x=df_comp["Station"], y=df_comp["Old Fare (£)"], mode="lines+markers",
-                        name=f"Historical {chosen_ticket} (Today)", 
-                        line=dict(color="#1f77b4", width=3), marker=dict(size=8),
-                        hovertemplate="<b>To: %{x}</b><br>True Historical Fare: £%{y:.2f}<extra></extra>"
+                    # Track 1: Pure Splits (e.g., 7DS + 7DS or SDR + SDR)
+                    fig_splits.add_trace(go.Bar(
+                        x=df_splits["Intermediate Station"], y=df_splits["Pure Split"],
+                        name=f"Pure Split ({chosen_ticket} + {chosen_ticket})", 
+                        marker_color='rgb(55, 83, 109)',
+                        customdata=df_splits[["Pure L1", "Pure L2"]],
+                        hovertemplate="<b>Split Station: %{x}</b><br>Total Split Cost: £%{y:.2f}<br>Leg 1 ("+chosen_ticket+"): £%{customdata[0]:.2f}<br>Leg 2 ("+chosen_ticket+"): £%{customdata[1]:.2f}<extra></extra>"
                     ))
                     
-                    # 2. Historical Super Off-Peak Line (If looking at Off-Peak variants and data exists)
-                    if chosen_ticket in ["CDR", "CDS"] and df_comp["Old Super Off-Peak (£)"].notna().any():
-                        fig_comp.add_trace(go.Scatter(
-                            x=df_comp["Station"], y=df_comp["Old Super Off-Peak (£)"], mode="lines+markers",
-                            name="Old Super Off-Peak (Withdrawn)", 
-                            line=dict(color="orange", width=2, dash="dot"), marker=dict(size=6),
-                            hovertemplate="<b>To: %{x}</b><br>Withdrawn SOP Fare: £%{y:.2f}<extra></extra>"
+                    # Only add Mixed Product combos if dealing with walk-up tickers (skip season passes)
+                    if chosen_ticket != "7DS" and chosen_ticket != alt_product:
+                        # Track 2: Product Mixture Combo A
+                        fig_splits.add_trace(go.Bar(
+                            x=df_splits["Intermediate Station"], y=df_splits["Mix A"],
+                            name=f"Mixed Combo A ({chosen_ticket} + {alt_product})", 
+                            marker_color='rgb(26, 118, 141)',
+                            customdata=df_splits[["Mix A L1", "Mix A L2"]],
+                            hovertemplate="<b>Split Station: %{x}</b><br>Total Split Cost: £%{y:.2f}<br>Leg 1 ("+chosen_ticket+"): £%{customdata[0]:.2f}<br>Leg 2 ("+alt_product+"): £%{customdata[1]:.2f}<extra></extra>"
+                        ))
+                        
+                        # Track 3: Product Mixture Combo B
+                        fig_splits.add_trace(go.Bar(
+                            x=df_splits["Intermediate Station"], y=df_splits["Mix B"],
+                            name=f"Mixed Combo B ({alt_product} + {chosen_ticket})", 
+                            marker_color='rgb(158, 201, 225)',
+                            customdata=df_splits[["Mix B L1", "Mix B L2"]],
+                            hovertemplate="<b>Split Station: %{x}</b><br>Total Split Cost: £%{y:.2f}<br>Leg 1 ("+alt_product+"): £%{customdata[0]:.2f}<br>Leg 2 ("+chosen_ticket+"): £%{customdata[1]:.2f}<extra></extra>"
                         ))
                     
-                    # 3. New Optimized Output Line (Post-Network, SLP, and Rounding rules)
-                    fig_comp.add_trace(go.Scatter(
-                        x=df_comp["Station"], y=df_comp["New Fare (£)"], mode="lines+markers",
-                        name=f"New Optimized {chosen_ticket}", 
-                        line=dict(color="#d62728", width=3), marker=dict(size=8),
-                        customdata=df_comp["Change (£)"],
-                        hovertemplate="<b>To: %{x}</b><br>New Fare: £%{y:.2f}<br>True Variance: £%{customdata:+.2f}<extra></extra>"
+                    # Fixed baseline horizontal benchmark line representing the Direct selection fare
+                    fig_splits.add_shape(
+                        type="line", x0=-0.5, y0=direct_fare_new, x1=len(df_splits) - 0.5, y1=direct_fare_new,
+                        line=dict(color="Crimson", width=3, dash="dash"),
+                    )
+                    
+                    fig_splits.add_trace(go.Scatter(
+                        x=[df_splits["Intermediate Station"].iloc[0]], y=[direct_fare_new],
+                        mode="lines", name=f"Direct {chosen_ticket} Fare (£{direct_fare_new:.2f})",
+                        line=dict(color="Crimson", width=3, dash="dash"), showlegend=True
                     ))
                     
-                    fig_comp.update_layout(
-                        title=f"{chosen_ticket} True Commercial Progression Outward from {start_stn.title()}",
-                        xaxis_title="Destination Milestone Stops", yaxis_title="Fare Price (£)",
-                        template="plotly_white", 
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                        hovermode="x unified"
+                    fig_splits.update_layout(
+                        title=f"{chosen_ticket} Split & Product Mix Check: {start_stn.title()} to {end_stn.title()}",
+                        xaxis_title="Intermediate Splitting Points", yaxis_title="Total Fare Price (£)",
+                        barmode='group', template="plotly_white", 
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                     )
-                    st.plotly_chart(fig_comp, use_container_width=True)
+                    st.plotly_chart(fig_splits, use_container_width=True)
                 else:
-                    st.info("No historical comparison data rows found for this selection.")
+                    st.info(f"No internal split points with complete fare combinations found for {chosen_ticket} tickets along this segment.")
             
             with gc2:
                 if chart_data_comparison:
