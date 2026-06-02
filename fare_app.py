@@ -145,7 +145,21 @@ if uploaded_files:
         
         df['Original_SDR'] = pd.to_numeric(df.iloc[:, 9], errors='coerce').fillna(0.0)
         df['Original_7DS'] = pd.to_numeric(df['7DS'], errors='coerce').fillna(0.0) if '7DS' in df.columns else pd.to_numeric(df.iloc[:, 13], errors='coerce').fillna(0.0)
+        # Extracting the new Super Off-Peak columns from your main sheet layout
+        df['Original_EVA'] = pd.to_numeric(df.iloc[:, 12], errors='coerce').fillna(0.0) # Col M
+        df['Original_SUA'] = pd.to_numeric(df.iloc[:, 13], errors='coerce').fillna(0.0) # Col N
+        df['Original_EVB'] = pd.to_numeric(df.iloc[:, 14], errors='coerce').fillna(0.0) # Col O
+        df['Original_SUB'] = pd.to_numeric(df.iloc[:, 15], errors='coerce').fillna(0.0) # Col P
         
+        # Helper to find any existing baseline Super Off-Peak fare for reference
+        def get_old_sop(row, ticket_type):
+            if ticket_type in ["CDR", "SDR"]:
+                val = row['Original_EVB'] if row['Original_EVB'] > 0 else row['Original_SUB']
+            else:
+                val = row['Original_EVA'] if row['Original_EVA'] > 0 else row['Original_SUA']
+            return float(val)
+        
+        df['Old_Super_OffPeak'] = df.apply(lambda r: get_old_sop(r, chosen_ticket), axis=1)
         # Guardrail: Catch any blank or 0 values for 7DS and apply standard formula fallback
         df['Original_7DS'] = df['Original_7DS'].fillna(df['Original_SDR'] * 3.5)
         df.loc[df['Original_7DS'] <= 0, 'Original_7DS'] = df['Original_SDR'] * 3.5
@@ -169,8 +183,10 @@ if uploaded_files:
                 '2ADA': 'CDS', 'ADA': 'CDS',
                 '2BDY': 'CDR',
                 '2MQA': '7DS', '1MQA': '7DS',
-                '2BHA': 'CDR', '2HYV': 'CDR',
-                '2ADO': 'CDS', '2HYU': 'CDS'
+                
+                # Super Off-Peak shifts to Standard Off-Peak pipelines
+                '2BHA': 'CDR', '2HYV': 'CDR',  # EVB & SUB returns migrate to CDR
+                '2ADO': 'CDS', '2HYU': 'CDS'   # EVA & SUA singles migrate to CDS
             }
             
             df_jr['Product_Clean'] = df_jr['Product Code'].astype(str).str.strip().str.upper()
@@ -508,18 +524,22 @@ if uploaded_files:
 
             # --- GATHER DATA FOR OLD VS NEW LINE COMPARATOR ---
             chart_data_comparison = []
+            f_prices_sop = df.set_index('Match_ID')['Old_Super_OffPeak'].to_dict() # Map SOP fares
+            
             for stn in active_route[1:]:
                 stn_clean = stn.replace(" ", "")
                 flow_id = f"{start_clean}-{stn_clean}"
                 
                 old_f = f_prices_old.get(flow_id, 0.0)
                 new_f = f_prices_new.get(flow_id, 0.0)
+                sop_f = f_prices_sop.get(flow_id, 0.0)
                 
                 if old_f > 0 or new_f > 0:
                     chart_data_comparison.append({
                         "Station": stn.title(),
                         "Old Fare (£)": old_f,
                         "New Fare (£)": new_f,
+                        "Old Super Off-Peak (£)": sop_f if sop_f > 0 else None,
                         "Change (£)": new_f - old_f
                     })
 
@@ -588,15 +608,23 @@ if uploaded_files:
                     
                     fig_comp.add_trace(go.Scatter(
                         x=df_comp["Station"], y=df_comp["Old Fare (£)"], mode="lines+markers",
-                        name="Old Fare", line=dict(color="#1f77b4", width=3), marker=dict(size=8),
-                        hovertemplate="<b>To: %{x}</b><br>Old Fare: £%{y:.2f}<extra></extra>"
+                        name=f"Old Base {chosen_ticket}", line=dict(color="#1f77b4", width=3), marker=dict(size=8),
+                        hovertemplate="<b>To: %{x}</b><br>Old Base Fare: £%{y:.2f}<extra></extra>"
                     ))
+                    
+                    # NEW TRACE: Plots the historical Super Off-Peak line if data exists for that station flow
+                    if chosen_ticket in ["CDR", "CDS"] and df_comp["Old Super Off-Peak (£)"].notna().any():
+                        fig_comp.add_trace(go.Scatter(
+                            x=df_comp["Station"], y=df_comp["Old Super Off-Peak (£)"], mode="lines+markers",
+                            name="Old Super Off-Peak (Withdrawn)", line=dict(color="orange", width=2, dash="dot"), marker=dict(size=6),
+                            hovertemplate="<b>To: %{x}</b><br>Withdrawn SOP Fare: £%{y:.2f}<extra></extra>"
+                        ))
                     
                     fig_comp.add_trace(go.Scatter(
                         x=df_comp["Station"], y=df_comp["New Fare (£)"], mode="lines+markers",
-                        name="New Fare", line=dict(color="#d62728", width=3), marker=dict(size=8),
+                        name=f"New Optimized {chosen_ticket}", line=dict(color="#d62728", width=3), marker=dict(size=8),
                         customdata=df_comp["Change (£)"],
-                        hovertemplate="<b>To: %{x}</b><br>New Fare: £%{y:.2f}<br>Price Change: £%{customdata:+.2f}<extra></extra>"
+                        hovertemplate="<b>To: %{x}</b><br>New Fare: £%{y:.2f}<br>Change vs Old Base: £%{customdata:+.2f}<extra></extra>"
                     ))
                     
                     fig_comp.update_layout(
