@@ -524,23 +524,36 @@ if uploaded_files:
 
             # --- GATHER DATA FOR OLD VS NEW LINE COMPARATOR ---
             chart_data_comparison = []
+            
+            # 1. Create a dictionary map of the TRUE unrounded historical SDR and 7DS directly from your excel file columns
+            raw_sdr_old_map = df.set_index('Match_ID')['Original_SDR'].to_dict()
+            raw_7ds_old_map = df.set_index('Match_ID')['Original_7DS'].to_dict()
             f_prices_sop = df.set_index('Match_ID')['Old_Super_OffPeak'].to_dict() # Map SOP fares
             
             for stn in active_route[1:]:
                 stn_clean = stn.replace(" ", "")
                 flow_id = f"{start_clean}-{stn_clean}"
                 
-                old_f = f_prices_old.get(flow_id, 0.0)
                 new_f = f_prices_new.get(flow_id, 0.0)
                 sop_f = f_prices_sop.get(flow_id, 0.0)
                 
-                if old_f > 0 or new_f > 0:
+                # 2. Derive what the ticket fare is TODAY using the raw sheet numbers before any code loops run
+                if chosen_ticket == "SDR":
+                    today_f = raw_sdr_old_map.get(flow_id, 0.0)
+                elif chosen_ticket == "7DS":
+                    today_f = raw_7ds_old_map.get(flow_id, 0.0)
+                else:
+                    # For SDS, CDS, and CDR: Derive directly from the raw spreadsheet cell baseline
+                    raw_base_sdr = raw_sdr_old_map.get(flow_id, 0.0)
+                    today_f = derive_fare(raw_base_sdr, chosen_ticket)
+                
+                if today_f > 0 or new_f > 0:
                     chart_data_comparison.append({
                         "Station": stn.title(),
-                        "Old Fare (£)": old_f,
+                        "Old Fare (£)": today_f,
                         "New Fare (£)": new_f,
                         "Old Super Off-Peak (£)": sop_f if sop_f > 0 else None,
-                        "Change (£)": new_f - old_f
+                        "Change (£)": new_f - today_f
                     })
 
             gc1, gc2 = st.columns(2)
@@ -606,13 +619,14 @@ if uploaded_files:
                     df_comp = pd.DataFrame(chart_data_comparison)
                     fig_comp = go.Figure()
                     
+                    # Updated Blue Line: Displays true "Fares Today" from Excel sheet benchmarks
                     fig_comp.add_trace(go.Scatter(
                         x=df_comp["Station"], y=df_comp["Old Fare (£)"], mode="lines+markers",
-                        name=f"Old Base {chosen_ticket}", line=dict(color="#1f77b4", width=3), marker=dict(size=8),
-                        hovertemplate="<b>To: %{x}</b><br>Old Base Fare: £%{y:.2f}<extra></extra>"
+                        name="Fares Today", line=dict(color="#1f77b4", width=3), marker=dict(size=8),
+                        hovertemplate="<b>To: %{x}</b><br>Fares Today: £%{y:.2f}<extra></extra>"
                     ))
                     
-                    # NEW TRACE: Plots the historical Super Off-Peak line if data exists for that station flow
+                    # Orange Dotted Line: Super Off-Peak Baseline Reference (Unchanged & Safe)
                     if chosen_ticket in ["CDR", "CDS"] and df_comp["Old Super Off-Peak (£)"].notna().any():
                         fig_comp.add_trace(go.Scatter(
                             x=df_comp["Station"], y=df_comp["Old Super Off-Peak (£)"], mode="lines+markers",
@@ -620,11 +634,12 @@ if uploaded_files:
                             hovertemplate="<b>To: %{x}</b><br>Withdrawn SOP Fare: £%{y:.2f}<extra></extra>"
                         ))
                     
+                    # Red Line: New Optimized Fares
                     fig_comp.add_trace(go.Scatter(
                         x=df_comp["Station"], y=df_comp["New Fare (£)"], mode="lines+markers",
                         name=f"New Optimized {chosen_ticket}", line=dict(color="#d62728", width=3), marker=dict(size=8),
                         customdata=df_comp["Change (£)"],
-                        hovertemplate="<b>To: %{x}</b><br>New Fare: £%{y:.2f}<br>Change vs Old Base: £%{customdata:+.2f}<extra></extra>"
+                        hovertemplate="<b>To: %{x}</b><br>New Fare: £%{y:.2f}<br>True Variance: £%{customdata:+.2f}<extra></extra>"
                     ))
                     
                     fig_comp.update_layout(
