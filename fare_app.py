@@ -680,7 +680,6 @@ if uploaded_files:
 
             # 🟢 START OF TAB 2 CONTENTS (Market Opportunities & Top 10 Tables)
             with tab2:
-                st.divider()
                 
                 # =========================================================================
                 # --- TOP AGGREGATIONS AND METRICS TABLES ---
