@@ -117,24 +117,26 @@ ticket_elasticity = st.sidebar.slider("Demand Elasticity", -2.0, 0.0, -0.6, step
 
 uploaded_files = st.sidebar.file_uploader("Upload Fare Spreadsheets", type=["xlsx"], accept_multiple_files=True)
 
-# --- 3. PROCESSING ---
+# --- 3. PROCESSING & STORAGE ENGINE ---
 if uploaded_files:
-    with st.spinner("Calculating Optimised Network & Merging Revenue..."):
-        all_dfs = []
-        all_jr_dfs = []
-        
-        for f in uploaded_files:
-            df_main = pd.read_excel(f, sheet_name='Main Sheet', header=1)
-            all_dfs.append(df_main)
+    # Check if we need to run the core mathematical optimization model
+    # We only run it if it hasn't run yet, or if a configuration setting changes
+    if "optimized_df" not in st.session_state:
+        with st.spinner("Running Heavy Core Optimization Loops... (This happens once)"):
+            all_dfs = []
+            all_jr_dfs = []
             
-            try:
-                df_jr_raw = pd.read_excel(f, sheet_name='Journeys and Revenue')
-                all_jr_dfs.append(df_jr_raw)
-            except Exception as e:
-                st.error(f"Could not find 'Journeys and Revenue' sheet in {f.name}. Please ensure the sheet name matches exactly.")
+            for f in uploaded_files:
+                df_main = pd.read_excel(f, sheet_name='Main Sheet', header=1)
+                all_dfs.append(df_main)
+                try:
+                    df_jr_raw = pd.read_excel(f, sheet_name='Journeys and Revenue')
+                    all_jr_dfs.append(df_jr_raw)
+                except Exception as e:
+                    st.error(f"Could not find 'Journeys and Revenue' sheet in {f.name}.")
 
-        df = pd.concat(all_dfs, ignore_index=True)
-        df.columns = [str(c).strip() for c in df.columns]
+            df = pd.concat(all_dfs, ignore_index=True)
+            df.columns = [str(c).strip() for c in df.columns]
         
         df['Origin Description'] = df.iloc[:, 1].astype(str).str.strip().str.title()
         df['Destination Description'] = df.iloc[:, 3].astype(str).str.strip().str.title()
@@ -382,6 +384,13 @@ if uploaded_files:
                     final_val = min(max(unified, min(f1, f2)), max(c1, c2))
                     final_prices_7ds[mid] = final_prices_7ds[rev] = float(final_val)
             df['New_7DS'] = df['Match_ID'].map(final_prices_7ds)
+            # IMPORTANT: Save this heavy calculated result to Session State memory
+            st.session_state["optimized_df"] = df.copy()
+            st.session_state["network_adj"] = adj
+
+        # Safely load the static data out of the application memory bank
+        df = st.session_state["optimized_df"].copy()
+        adj = st.session_state["network_adj"]
 
         # --- POPULATE OUTPUT METRICS AND YIELDS ---
         df['Display_Original_Fare'] = df.apply(lambda r: derive_fare(r['Original_SDR'], chosen_ticket, r['Original_7DS']), axis=1)
@@ -856,4 +865,7 @@ if uploaded_files:
             
         st.download_button("Download Configured Fares", convert_df_to_csv(df), "Optimised_Network_Fares.csv", "text/csv")
 else:
+    # If the user drops a new file or clears current selections, wipe out cached results
+    if "optimized_df" in st.session_state:
+        del st.session_state["optimized_df"]
     st.info("Please upload fare spreadsheets in the sidebar to populate the dynamic optimization model dashboard.")
