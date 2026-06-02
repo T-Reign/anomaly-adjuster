@@ -143,7 +143,10 @@ if uploaded_files:
         df['Dest_N'] = df['Destination Description'].str.upper().str.replace(" ", "")
         df['Match_ID'] = df['Origin_N'] + "-" + df['Dest_N']
         
-        df['Original_SDR'] = pd.to_numeric(df.iloc[:, 9], errors='coerce').fillna(0.0)
+        df['Original_SDS'] = pd.to_numeric(df.iloc[:, 7], errors='coerce').fillna(0.0)  # Col H
+        df['Original_CDS'] = pd.to_numeric(df.iloc[:, 8], errors='coerce').fillna(0.0)  # Col I
+        df['Original_SDR'] = pd.to_numeric(df.iloc[:, 9], errors='coerce').fillna(0.0)  # Col J
+        df['Original_CDR'] = pd.to_numeric(df.iloc[:, 10], errors='coerce').fillna(0.0) # Col K
         df['Original_7DS'] = pd.to_numeric(df['7DS'], errors='coerce').fillna(0.0) if '7DS' in df.columns else pd.to_numeric(df.iloc[:, 13], errors='coerce').fillna(0.0)
         # Extracting the new Super Off-Peak columns from your main sheet layout
         df['Original_EVA'] = pd.to_numeric(df.iloc[:, 12], errors='coerce').fillna(0.0) # Col M
@@ -525,8 +528,11 @@ if uploaded_files:
             # --- GATHER DATA FOR OLD VS NEW LINE COMPARATOR ---
             chart_data_comparison = []
             
-            # 1. Create a dictionary map of the TRUE unrounded historical SDR and 7DS directly from your excel file columns
+            # Map exact raw values from spreadsheet columns directly to dictionaries
+            raw_sds_old_map = df.set_index('Match_ID')['Original_SDS'].to_dict()
+            raw_cds_old_map = df.set_index('Match_ID')['Original_CDS'].to_dict()
             raw_sdr_old_map = df.set_index('Match_ID')['Original_SDR'].to_dict()
+            raw_cdr_old_map = df.set_index('Match_ID')['Original_CDR'].to_dict()
             raw_7ds_old_map = df.set_index('Match_ID')['Original_7DS'].to_dict()
             f_prices_sop = df.set_index('Match_ID')['Old_Super_OffPeak'].to_dict() # Map SOP fares
             
@@ -537,15 +543,19 @@ if uploaded_files:
                 new_f = f_prices_new.get(flow_id, 0.0)
                 sop_f = f_prices_sop.get(flow_id, 0.0)
                 
-                # 2. Derive what the ticket fare is TODAY using the raw sheet numbers before any code loops run
-                if chosen_ticket == "SDR":
+                # Directly pull what the ticket fare is TODAY from its dedicated Excel column map
+                if chosen_ticket == "SDS":
+                    today_f = raw_sds_old_map.get(flow_id, 0.0)
+                elif chosen_ticket == "CDS":
+                    today_f = raw_cds_old_map.get(flow_id, 0.0)
+                elif chosen_ticket == "SDR":
                     today_f = raw_sdr_old_map.get(flow_id, 0.0)
+                elif chosen_ticket == "CDR":
+                    today_f = raw_cdr_old_map.get(flow_id, 0.0)
                 elif chosen_ticket == "7DS":
                     today_f = raw_7ds_old_map.get(flow_id, 0.0)
                 else:
-                    # For SDS, CDS, and CDR: Derive directly from the raw spreadsheet cell baseline
-                    raw_base_sdr = raw_sdr_old_map.get(flow_id, 0.0)
-                    today_f = derive_fare(raw_base_sdr, chosen_ticket)
+                    today_f = 0.0
                 
                 if today_f > 0 or new_f > 0:
                     chart_data_comparison.append({
@@ -619,14 +629,14 @@ if uploaded_files:
                     df_comp = pd.DataFrame(chart_data_comparison)
                     fig_comp = go.Figure()
                     
-                    # Updated Blue Line: Displays true "Fares Today" from Excel sheet benchmarks
+                    # Blue Line: Now displays exact spreadsheet values straight from Columns H, I, J, K, or L
                     fig_comp.add_trace(go.Scatter(
                         x=df_comp["Station"], y=df_comp["Old Fare (£)"], mode="lines+markers",
                         name="Fares Today", line=dict(color="#1f77b4", width=3), marker=dict(size=8),
                         hovertemplate="<b>To: %{x}</b><br>Fares Today: £%{y:.2f}<extra></extra>"
                     ))
                     
-                    # Orange Dotted Line: Super Off-Peak Baseline Reference (Unchanged & Safe)
+                    # Orange Dotted Line: Super Off-Peak Reference
                     if chosen_ticket in ["CDR", "CDS"] and df_comp["Old Super Off-Peak (£)"].notna().any():
                         fig_comp.add_trace(go.Scatter(
                             x=df_comp["Station"], y=df_comp["Old Super Off-Peak (£)"], mode="lines+markers",
@@ -654,7 +664,6 @@ if uploaded_files:
                     st.info("No historical comparison data rows found for this selection.")
         else:
             st.info(f"No predefined line of route connects **{start_stn.title()}** to **{end_stn.title()}** in that direction.")
-
         # =========================================================================
         # --- BOTTOM AGGREGATIONS AND METRICS TABLES ---
         # =========================================================================
