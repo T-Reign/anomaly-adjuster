@@ -146,6 +146,10 @@ if uploaded_files:
         df['Original_SDR'] = pd.to_numeric(df.iloc[:, 9], errors='coerce').fillna(0.0)
         df['Original_7DS'] = pd.to_numeric(df['7DS'], errors='coerce').fillna(0.0) if '7DS' in df.columns else pd.to_numeric(df.iloc[:, 13], errors='coerce').fillna(0.0)
         
+        # Guardrail: Catch any blank or 0 values for 7DS and apply standard formula fallback
+        df['Original_7DS'] = df['Original_7DS'].fillna(df['Original_SDR'] * 3.5)
+        df.loc[df['Original_7DS'] <= 0, 'Original_7DS'] = df['Original_SDR'] * 3.5
+        
         df = df.sort_values('Original_SDR', ascending=False).drop_duplicates(subset=['Match_ID']).copy()
         
         raw_price_map = df.set_index('Match_ID')['Original_SDR'].to_dict()
@@ -196,6 +200,7 @@ if uploaded_files:
             df['Filtered_Journeys'] = 0
             df['Filtered_Revenue'] = 0.0
         
+        # --- PREPARE SDR GRIDS ---
         def initial_prep(row):
             parts = row['Match_ID'].split("-")
             rev_id = f"{parts[1]}-{parts[0]}"
@@ -206,6 +211,18 @@ if uploaded_files:
         df['New_SDR'] = df.apply(initial_prep, axis=1)
         df['Base_Price'] = df['New_SDR'].copy()
 
+        # --- PREPARE 7DS GRIDS (PRESERVING PRECISION FLOATS) ---
+        def initial_prep_7ds(row):
+            parts = row['Match_ID'].split("-")
+            rev_id = f"{parts[1]}-{parts[0]}"
+            highest = max(row['Original_7DS'], raw_7ds_map.get(rev_id, 0))
+            val = highest if slp_enabled else row['Original_7DS']
+            return float(val)
+
+        df['New_7DS'] = df.apply(initial_prep_7ds, axis=1)
+        df['Base_Price_7DS'] = df['New_7DS'].copy()
+
+        # --- CALCULATE SDR CEILING & FLOOR CAPS ---
         def calculate_ceiling(row):
             if enable_low_vol and (row['Total_Journeys'] < low_vol_threshold):
                 if low_vol_action == "Ignore the Cap Completely":
@@ -214,7 +231,6 @@ if uploaded_files:
                     effective_cap = inc_cap * 2
             else:
                 effective_cap = inc_cap
-                
             raw_ceiling = row['Original_SDR'] * (1 + effective_cap)
             return round_up(raw_ceiling, sdr_rounding)
 
@@ -228,34 +244,76 @@ if uploaded_files:
                     effective_dec_cap = dec_cap / 2
             else:
                 effective_dec_cap = dec_cap
-                
             raw_floor = row['Original_SDR'] * (1 - effective_dec_cap)
             return round_up(raw_floor, sdr_rounding)
 
         df['Floor_Price'] = df.apply(calculate_floor, axis=1)
 
+        # --- CALCULATE 7DS CEILING & FLOOR CAPS ---
+        def calculate_ceiling_7ds(row):
+            if enable_low_vol and (row['Total_Journeys'] < low_vol_threshold):
+                if low_vol_action == "Ignore the Cap Completely":
+                    return 99999.0
+                else:
+                    effective_cap = inc_cap * 2
+            else:
+                effective_cap = inc_cap
+            return float(row['Original_7DS'] * (1 + effective_cap))
+
+        df['Ceiling_Price_7DS'] = df.apply(calculate_ceiling_7ds, axis=1)
+
+        def calculate_floor_7ds(row):
+            if enable_high_rev and (row['Filtered_Revenue'] > high_rev_threshold):
+                if high_rev_action == "Do Not Decrease At All":
+                    return row['Original_7DS']
+                else:
+                    effective_dec_cap = dec_cap / 2
+            else:
+                effective_dec_cap = dec_cap
+            return float(row['Original_7DS'] * (1 - effective_dec_cap))
+
+        df['Floor_Price_7DS'] = df.apply(calculate_floor_7ds, axis=1)
+
+        # --- MAP ADJACENCY MATRIX NETWORK ---
         adj = defaultdict(list)
         for mid in raw_price_map.keys():
             o, d = mid.split("-")
             adj[o].append(d)
 
+        # --- TWIN SEPARATE OPTIMISATION LOOPS ---
+        curr_sdr = df.set_index('Match_ID')['New_SDR'].to_dict()
+        curr_7ds = df.set_index('Match_ID')['New_7DS'].to_dict()
+
         for _ in range(2):
-            curr = df.set_index('Match_ID')['New_SDR'].to_dict()
             for A in adj:
                 for B in adj[A]:
                     if B not in adj: continue
                     for C in adj[B]:
                         id_ac, id_ab, id_bc = f"{A}-{C}", f"{A}-{B}", f"{B}-{C}"
-                        if id_ac in curr:
-                            thru, s_sum = curr[id_ac], curr[id_ab] + curr.get(id_bc, 9999)
+                        
+                        # Fix SDR split ticketing anomalies
+                        if id_ac in curr_sdr:
+                            thru, s_sum = curr_sdr[id_ac], curr_sdr[id_ab] + curr_sdr.get(id_bc, 9999)
                             if s_sum < (thru - 0.009):
-                                if id_bc in curr and id_bc not in excluded_splits:
-                                    pot_inc = round_up(curr[id_bc] + (thru - s_sum)/2, sdr_rounding)
-                                    curr[id_bc] = min(pot_inc, df.loc[df['Match_ID']==id_bc, 'Ceiling_Price'].values[0])
+                                if id_bc in curr_sdr and id_bc not in excluded_splits:
+                                    pot_inc = round_up(curr_sdr[id_bc] + (thru - s_sum)/2, sdr_rounding)
+                                    curr_sdr[id_bc] = min(pot_inc, df.loc[df['Match_ID']==id_bc, 'Ceiling_Price'].values[0])
                                 if id_ac not in excluded_splits:
-                                    pot_dec = round_up(curr[id_ab] + curr[id_bc], sdr_rounding)
-                                    curr[id_ac] = max(pot_dec, df.loc[df['Match_ID']==id_ac, 'Floor_Price'].values[0])
+                                    pot_dec = round_up(curr_sdr[id_ab] + curr_sdr[id_bc], sdr_rounding)
+                                    curr_sdr[id_ac] = max(pot_dec, df.loc[df['Match_ID']==id_ac, 'Floor_Price'].values[0])
+
+                        # Fix 7DS split ticketing anomalies (Pure Float Math)
+                        if id_ac in curr_7ds:
+                            thru, s_sum = curr_7ds[id_ac], curr_7ds[id_ab] + curr_7ds.get(id_bc, 9999)
+                            if s_sum < (thru - 0.009):
+                                if id_bc in curr_7ds and id_bc not in excluded_splits:
+                                    pot_inc = curr_7ds[id_bc] + (thru - s_sum)/2
+                                    curr_7ds[id_bc] = min(pot_inc, df.loc[df['Match_ID']==id_bc, 'Ceiling_Price_7DS'].values[0])
+                                if id_ac not in excluded_splits:
+                                    pot_dec = curr_7ds[id_ab] + curr_7ds[id_bc]
+                                    curr_7ds[id_ac] = max(pot_dec, df.loc[df['Match_ID']==id_ac, 'Floor_Price_7DS'].values[0])
             
+            # Line of route long buying corridor loops
             for path in SEQUENCES.values():
                 for i, s in enumerate(path):
                     s_c = s.replace(" ","")
@@ -264,32 +322,54 @@ if uploaded_files:
                         for k, f in enumerate(path[j+1:], j+1):
                             f_c = f.replace(" ","")
                             id_near, id_far = f"{s_c}-{n_c}", f"{s_c}-{f_c}"
-                            if id_near in curr and id_far in curr:
-                                if curr[id_near] > curr[id_far] and id_near not in excluded_longbuys:
-                                    curr[id_near] = max(curr[id_far], df.loc[df['Match_ID']==id_near, 'Floor_Price'].values[0])
-        df['New_SDR'] = df['Match_ID'].map(curr)
+                            
+                            # Check long buying for SDR
+                            if id_near in curr_sdr and id_far in curr_sdr:
+                                if curr_sdr[id_near] > curr_sdr[id_far] and id_near not in excluded_longbuys:
+                                    curr_sdr[id_near] = max(curr_sdr[id_far], df.loc[df['Match_ID']==id_near, 'Floor_Price'].values[0])
+                                    
+                            # Check long buying for 7DS
+                            if id_near in curr_7ds and id_far in curr_7ds:
+                                if curr_7ds[id_near] > curr_7ds[id_far] and id_near not in excluded_longbuys:
+                                    curr_7ds[id_near] = max(curr_7ds[id_far], df.loc[df['Match_ID']==id_near, 'Floor_Price_7DS'].values[0])
 
+        df['New_SDR'] = df['Match_ID'].map(curr_sdr)
+        df['New_7DS'] = df['Match_ID'].map(curr_7ds)
+
+        # --- SINGLE-LEG DIRECTIONAL PRICING SYNCHRONISATION ---
         if slp_enabled:
-            final_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
-            for mid in list(final_prices.keys()):
+            # Process SDR directional alignment
+            final_prices_sdr = df.set_index('Match_ID')['New_SDR'].to_dict()
+            for mid in list(final_prices_sdr.keys()):
                 o, d = mid.split("-")
                 rev = f"{d}-{o}"
-                if rev in final_prices:
-                    unified = max(final_prices[mid], final_prices[rev])
+                if rev in final_prices_sdr:
+                    unified = max(final_prices_sdr[mid], final_prices_sdr[rev])
                     c1, f1 = df.loc[df['Match_ID']==mid, ['Ceiling_Price','Floor_Price']].values[0]
                     c2, f2 = df.loc[df['Match_ID']==rev, ['Ceiling_Price','Floor_Price']].values[0]
                     final_val = min(max(unified, min(f1, f2)), max(c1, c2))
-                    final_prices[mid] = final_prices[rev] = round_up(final_val, sdr_rounding)
-            df['New_SDR'] = df['Match_ID'].map(final_prices)
+                    final_prices_sdr[mid] = final_prices_sdr[rev] = round_up(final_val, sdr_rounding)
+            df['New_SDR'] = df['Match_ID'].map(final_prices_sdr)
 
-        df['Original_7DS'] = df['Original_7DS'].fillna(df['Original_SDR'] * 3.5)
-        df['New_7DS'] = df['Original_7DS'].copy() 
-        
+            # Process 7DS directional alignment
+            final_prices_7ds = df.set_index('Match_ID')['New_7DS'].to_dict()
+            for mid in list(final_prices_7ds.keys()):
+                o, d = mid.split("-")
+                rev = f"{d}-{o}"
+                if rev in final_prices_7ds:
+                    unified = max(final_prices_7ds[mid], final_prices_7ds[rev])
+                    c1, f1 = df.loc[df['Match_ID']==mid, ['Ceiling_Price_7DS','Floor_Price_7DS']].values[0]
+                    c2, f2 = df.loc[df['Match_ID']==rev, ['Ceiling_Price_7DS','Floor_Price_7DS']].values[0]
+                    final_val = min(max(unified, min(f1, f2)), max(c1, c2))
+                    final_prices_7ds[mid] = final_prices_7ds[rev] = float(final_val)
+            df['New_7DS'] = df['Match_ID'].map(final_prices_7ds)
+
+        # --- POPULATE OUTPUT METRICS AND YIELDS ---
         df['Display_Original_Fare'] = df.apply(lambda r: derive_fare(r['Original_SDR'], chosen_ticket, r['Original_7DS']), axis=1)
         df['Display_New_Fare'] = df.apply(lambda r: derive_fare(r['New_SDR'], chosen_ticket, r['New_7DS']), axis=1)
 
         df['Diff'] = df['Display_New_Fare'] - df['Display_Original_Fare']
-        df['Opt_Increase'] = df['Display_New_Fare'] - df.apply(lambda r: derive_fare(r['Base_Price'], chosen_ticket, r['Original_7DS']), axis=1)
+        df['Opt_Increase'] = df['Display_New_Fare'] - df.apply(lambda r: derive_fare(r['Base_Price'], chosen_ticket, r['Base_Price_7DS']), axis=1)
         df['Status'] = df['Diff'].apply(lambda x: "Increased" if x > 0.01 else ("Decreased" if x < -0.01 else "Unchanged"))
         
         safe_orig_fare = df['Display_Original_Fare'].replace(0, 1)
@@ -355,8 +435,9 @@ if uploaded_files:
                 associated_sequences = matching_routes[active_route]
                 st.success(f"**Route Discovered:** Analyzing via the **{associated_sequences[0]}** corridor.")
             
-            # Create price dictionary mappings for underlying SDR logic to enable multi-product derivations
+            # Create price dictionary mappings for both underlying logic tables
             sdr_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
+            seasons_prices = df.set_index('Match_ID')['New_7DS'].to_dict()
             f_prices_new = df.set_index('Match_ID')['Display_New_Fare'].to_dict()
             f_prices_old = df.set_index('Match_ID')['Display_Original_Fare'].to_dict()
             
@@ -386,32 +467,44 @@ if uploaded_files:
                 leg1_id = f"{start_clean}-{mid_clean}"
                 leg2_id = f"{mid_clean}-{end_clean}"
                 
-                # Fetch base optimized SDR value to accurately apply product variation rules
-                base_sdr_l1 = sdr_prices.get(leg1_id, 0.0)
-                base_sdr_l2 = sdr_prices.get(leg2_id, 0.0)
-                
-                if base_sdr_l1 > 0 and base_sdr_l2 > 0:
-                    l1_primary = derive_fare(base_sdr_l1, chosen_ticket)
-                    l2_primary = derive_fare(base_sdr_l2, chosen_ticket)
+                if chosen_ticket == "7DS":
+                    # Separate pipeline handling 7DS weekly season rules exclusively
+                    l1_p = seasons_prices.get(leg1_id, 0.0)
+                    l2_p = seasons_prices.get(leg2_id, 0.0)
                     
-                    l1_alt = derive_fare(base_sdr_l1, alt_product)
-                    l2_alt = derive_fare(base_sdr_l2, alt_product)
+                    if l1_p > 0 and l2_p > 0:
+                        chart_data_splits.append({
+                            "Intermediate Station": mid_stn.title(),
+                            "Pure Split": l1_p + l2_p,
+                            "Pure L1": l1_p, "Pure L2": l2_p,
+                            "Mix A": 0.0, "Mix A L1": 0.0, "Mix A L2": 0.0,
+                            "Mix B": 0.0, "Mix B L1": 0.0, "Mix B L2": 0.0
+                        })
+                else:
+                    # Fetch base optimized SDR value to accurately apply product variation rules
+                    base_sdr_l1 = sdr_prices.get(leg1_id, 0.0)
+                    base_sdr_l2 = sdr_prices.get(leg2_id, 0.0)
                     
-                    pure_split = l1_primary + l2_primary
-                    mix_strategy_a = l1_primary + l2_alt
-                    mix_strategy_b = l1_alt + l2_primary
-                    
-                    chart_data_splits.append({
-                        "Intermediate Station": mid_stn.title(),
-                        "Pure Split": pure_split,
-                        "Pure L1": l1_primary, "Pure L2": l2_primary,
+                    if base_sdr_l1 > 0 and base_sdr_l2 > 0:
+                        l1_primary = derive_fare(base_sdr_l1, chosen_ticket)
+                        l2_primary = derive_fare(base_sdr_l2, chosen_ticket)
                         
-                        "Mix A": mix_strategy_a,
-                        "Mix A L1": l1_primary, "Mix A L2": l2_alt,
+                        l1_alt = derive_fare(base_sdr_l1, alt_product)
+                        l2_alt = derive_fare(base_sdr_l2, alt_product)
                         
-                        "Mix B": mix_strategy_b,
-                        "Mix B L1": l1_alt, "Mix B L2": l2_primary
-                    })
+                        pure_split = l1_primary + l2_primary
+                        mix_strategy_a = l1_primary + l2_alt
+                        mix_strategy_b = l1_alt + l2_primary
+                        
+                        chart_data_splits.append({
+                            "Intermediate Station": mid_stn.title(),
+                            "Pure Split": pure_split,
+                            "Pure L1": l1_primary, "Pure L2": l2_primary,
+                            "Mix A": mix_strategy_a,
+                            "Mix A L1": l1_primary, "Mix A L2": l2_alt,
+                            "Mix B": mix_strategy_b,
+                            "Mix B L1": l1_alt, "Mix B L2": l2_primary
+                        })
 
             # --- GATHER DATA FOR OLD VS NEW LINE COMPARATOR ---
             chart_data_comparison = []
@@ -437,7 +530,7 @@ if uploaded_files:
                     df_splits = pd.DataFrame(chart_data_splits)
                     fig_splits = go.Figure()
                     
-                    # Track 1: Pure Splits (e.g., SDR + SDR)
+                    # Track 1: Pure Splits (e.g., 7DS + 7DS or SDR + SDR)
                     fig_splits.add_trace(go.Bar(
                         x=df_splits["Intermediate Station"], y=df_splits["Pure Split"],
                         name=f"Pure Split ({chosen_ticket} + {chosen_ticket})", 
@@ -446,8 +539,9 @@ if uploaded_files:
                         hovertemplate="<b>Split Station: %{x}</b><br>Total Split Cost: £%{y:.2f}<br>Leg 1 ("+chosen_ticket+"): £%{customdata[0]:.2f}<br>Leg 2 ("+chosen_ticket+"): £%{customdata[1]:.2f}<extra></extra>"
                     ))
                     
-                    # Track 2: Product Mixture Combo A (Primary + Alternative)
-                    if chosen_ticket != alt_product:
+                    # Only add Mixed Product combos if dealing with walk-up tickers (skip season passes)
+                    if chosen_ticket != "7DS" and chosen_ticket != alt_product:
+                        # Track 2: Product Mixture Combo A
                         fig_splits.add_trace(go.Bar(
                             x=df_splits["Intermediate Station"], y=df_splits["Mix A"],
                             name=f"Mixed Combo A ({chosen_ticket} + {alt_product})", 
@@ -456,7 +550,7 @@ if uploaded_files:
                             hovertemplate="<b>Split Station: %{x}</b><br>Total Split Cost: £%{y:.2f}<br>Leg 1 ("+chosen_ticket+"): £%{customdata[0]:.2f}<br>Leg 2 ("+alt_product+"): £%{customdata[1]:.2f}<extra></extra>"
                         ))
                         
-                        # Track 3: Product Mixture Combo B (Alternative + Primary)
+                        # Track 3: Product Mixture Combo B
                         fig_splits.add_trace(go.Bar(
                             x=df_splits["Intermediate Station"], y=df_splits["Mix B"],
                             name=f"Mixed Combo B ({alt_product} + {chosen_ticket})", 
