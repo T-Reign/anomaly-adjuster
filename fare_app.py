@@ -689,7 +689,7 @@ if uploaded_files:
             dec_disp = df.sort_values('Diff', ascending=True).head(10).copy()
             dec_disp['Diff'] = dec_disp['Diff'].abs()
             st.dataframe(dec_disp[['Origin Description', 'Destination Description', 'Display_Original_Fare', 'Display_New_Fare', 'Diff']], 
-                         column_config={"Display_Original_Fare": st.column_config.NumberColumn("Original", format="£%.2f"), "Display_New_Fare": st.column_config.NumberColumn("New Fare", format="£%.2f"), "Diff": st.column_config.NumberColumn("Decrease", format="£%.2f")}, 
+                         column_config={"Display_Original_Fare": st.column_config.NumberColumn("Original", format="£%.2f"), "Display_New_Fare": st.column_config.NumberColumn("New Fare", format="£%.2f"), "Diff": st.column_config.NumberColumn("Decrease", format="-£%.2f")}, 
                          use_container_width=True, hide_index=True)
 
         st.divider()
