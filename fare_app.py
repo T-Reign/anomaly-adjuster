@@ -565,7 +565,7 @@ if uploaded_files:
                         "New Fare (£)": new_f,
                         "Old Super Off-Peak (£)": sop_f if sop_f > 0 else None,
                         # If there was no historical fare, variance is blank/None instead of misleading
-                        "Change (£)": (new_f - today_f) if today_f > 0 else None
+                        "Change (£)": round(new_f - today_f, 2) if today_f > 0 else None
                     })
 
             gc1, gc2 = st.columns(2)
@@ -653,8 +653,7 @@ if uploaded_files:
                         x=df_comp["Station"], y=df_comp["New Fare (£)"], mode="lines+markers",
                         name=f"New Optimized {chosen_ticket}", line=dict(color="#d62728", width=3), marker=dict(size=8),
                         customdata=df_comp["Change (£)"],
-                        hovertemplate="<b>To: %{x}</b><br>New Fare: £%{y:.2f}" + 
-                                      f"<br>%{{customdata:英國貨幣+:.2f}}".replace("英國貨幣", "True Variance: £") + "<extra></extra>" if df_comp["Change (£)"].notna().any() else "<b>To: %{x}</b><br>New Fare: £%{y:.2f}<extra></extra>"
+                        hovertemplate="<b>To: %{x}</b><br>New Fare: £%{y:.2f}<br>True Variance: £%{customdata:+.2f}<extra></extra>" if df_comp["Change (£)"].notna().any() else "<b>To: %{x}</b><br>New Fare: £%{y:.2f}<extra></extra>"
                     ))
                     
                     fig_comp.update_layout(
