@@ -560,10 +560,12 @@ if uploaded_files:
                 if today_f > 0 or new_f > 0:
                     chart_data_comparison.append({
                         "Station": stn.title(),
-                        "Old Fare (£)": today_f,
+                        # SMART FIX: If today's fare is 0, store it as None so the graph skips it
+                        "Old Fare (£)": today_f if today_f > 0 else None,
                         "New Fare (£)": new_f,
                         "Old Super Off-Peak (£)": sop_f if sop_f > 0 else None,
-                        "Change (£)": new_f - today_f
+                        # If there was no historical fare, variance is blank/None instead of misleading
+                        "Change (£)": (new_f - today_f) if today_f > 0 else None
                     })
 
             gc1, gc2 = st.columns(2)
@@ -599,7 +601,7 @@ if uploaded_files:
                             name=f"Mixed Combo B ({alt_product} + {chosen_ticket})", 
                             marker_color='rgb(158, 201, 225)',
                             customdata=df_splits[["Mix B L1", "Mix B L2"]],
-                            hovertemplate="<b>Split Station: %{x}</b><br>Total Split Cost: £%{y:.2f}<br>Leg 1 ("+alt_product+"): £%{customdata[0]:.2f}<br>Leg 2 ("+chosen_ticket+"): £%{customdata[1]:.2f}<extra></extra>"
+                            hovertemplate="<b>Split Station: %{x}</b><br>Total Split Cost: £%{y:.2f}<br>Leg 1 ("+alt_product+"): £%{customdata[1]:.2f}<br>Leg 2 ("+chosen_ticket+"): £%{customdata[1]:.2f}<extra></extra>"
                         ))
                     
                     # Fixed baseline horizontal benchmark line representing the Direct selection fare
@@ -629,12 +631,14 @@ if uploaded_files:
                     df_comp = pd.DataFrame(chart_data_comparison)
                     fig_comp = go.Figure()
                     
-                    # Blue Line: Now displays exact spreadsheet values straight from Columns H, I, J, K, or L
-                    fig_comp.add_trace(go.Scatter(
-                        x=df_comp["Station"], y=df_comp["Old Fare (£)"], mode="lines+markers",
-                        name="Fares Today", line=dict(color="#1f77b4", width=3), marker=dict(size=8),
-                        hovertemplate="<b>To: %{x}</b><br>Fares Today: £%{y:.2f}<extra></extra>"
-                    ))
+                    # SMART FIX: Only plot the blue line if there is at least one non-zero historical fare on this route segment
+                    if df_comp["Old Fare (£)"].notna().any():
+                        fig_comp.add_trace(go.Scatter(
+                            x=df_comp["Station"], y=df_comp["Old Fare (£)"], mode="lines+markers",
+                            name="Fares Today", line=dict(color="#1f77b4", width=3), marker=dict(size=8),
+                            connectgaps=True, # If a random station in the middle is 0, it neatly connects the rest
+                            hovertemplate="<b>To: %{x}</b><br>Fares Today: £%{y:.2f}<extra></extra>"
+                        ))
                     
                     # Orange Dotted Line: Super Off-Peak Reference
                     if chosen_ticket in ["CDR", "CDS"] and df_comp["Old Super Off-Peak (£)"].notna().any():
@@ -649,7 +653,8 @@ if uploaded_files:
                         x=df_comp["Station"], y=df_comp["New Fare (£)"], mode="lines+markers",
                         name=f"New Optimized {chosen_ticket}", line=dict(color="#d62728", width=3), marker=dict(size=8),
                         customdata=df_comp["Change (£)"],
-                        hovertemplate="<b>To: %{x}</b><br>New Fare: £%{y:.2f}<br>True Variance: £%{customdata:+.2f}<extra></extra>"
+                        hovertemplate="<b>To: %{x}</b><br>New Fare: £%{y:.2f}" + 
+                                      f"<br>%{{customdata:英國貨幣+:.2f}}".replace("英國貨幣", "True Variance: £") + "<extra></extra>" if df_comp["Change (£)"].notna().any() else "<b>To: %{x}</b><br>New Fare: £%{y:.2f}<extra></extra>"
                     ))
                     
                     fig_comp.update_layout(
