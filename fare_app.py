@@ -392,23 +392,25 @@ if uploaded_files:
         df = st.session_state["optimized_df"].copy()
         adj = st.session_state["network_adj"]
 
-        # --- POPULATE OUTPUT METRICS AND YIELDS ---
+        # Calculate downstream parameters dynamically BASED ON CURRENT SLIDERS
+        # (Elasticity and displays are calculated dynamically here instantly)
         df['Display_Original_Fare'] = df.apply(lambda r: derive_fare(r['Original_SDR'], chosen_ticket, r['Original_7DS']), axis=1)
         df['Display_New_Fare'] = df.apply(lambda r: derive_fare(r['New_SDR'], chosen_ticket, r['New_7DS']), axis=1)
 
         df['Diff'] = df['Display_New_Fare'] - df['Display_Original_Fare']
         df['Opt_Increase'] = df['Display_New_Fare'] - df.apply(lambda r: derive_fare(r['Base_Price'], chosen_ticket, r['Base_Price_7DS']), axis=1)
         df['Status'] = df['Diff'].apply(lambda x: "Increased" if x > 0.01 else ("Decreased" if x < -0.01 else "Unchanged"))
-        
+    
         safe_orig_fare = df['Display_Original_Fare'].replace(0, 1)
         df['Price_Pct_Change'] = df['Diff'] / safe_orig_fare
-        
+    
+        # Recalculates dynamically only on the final metrics when ticket_elasticity shifts!
         df['Predicted_Journeys'] = df['Filtered_Journeys'] * (1 + (ticket_elasticity * df['Price_Pct_Change']))
         df['Predicted_Journeys'] = df['Predicted_Journeys'].clip(lower=0)
-        
+    
         df['Old_Ticket_Revenue'] = df['Filtered_Journeys'] * df['Display_Original_Fare']
         df['New_Ticket_Revenue'] = df['Predicted_Journeys'] * df['Display_New_Fare']
-        
+    
         df['Revenue_Impact'] = df['New_Ticket_Revenue'] - df['Old_Ticket_Revenue']
         df['Abs_Revenue_Impact'] = df['Revenue_Impact'].abs()
 
