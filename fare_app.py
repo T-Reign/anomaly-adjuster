@@ -568,7 +568,7 @@ if uploaded_files:
                         "Change (£)": round(new_f - today_f, 2) if today_f > 0 else None
                     })
 
-            # 🟢 INITIALIZE TABS FOR DASHBOARD SEGREGATION
+           # 🟢 INITIALIZE TABS FOR DASHBOARD SEGREGATION
             tab1, tab2 = st.tabs(["📊 Hub Analytics", "🔍 Market Opportunities"])
 
             # 🟢 START OF TAB 1 CONTENTS (Analytics & Top 10 Tables)
@@ -677,24 +677,6 @@ if uploaded_files:
                         st.plotly_chart(fig_comp, use_container_width=True)
                     else:
                         st.info("No historical comparison data rows found for this selection.")
-            
-                # =========================================================================
-                # --- BOTTOM AGGREGATIONS AND METRICS TABLES ---
-                # =========================================================================
-                st.divider()
-                r1c1, r1c2 = st.columns(2)
-                with r1c1:
-                    st.subheader(f"Top 10 Price Increases ({chosen_ticket})")
-                    st.dataframe(df.sort_values('Opt_Increase', ascending=False).head(10)[['Origin Description', 'Destination Description', 'Display_Original_Fare', 'Display_New_Fare', 'Opt_Increase']], 
-                                 column_config={"Display_Original_Fare": st.column_config.NumberColumn("Baseline", format="£%.2f"), "Display_New_Fare": st.column_config.NumberColumn("New Fare", format="£%.2f"), "Opt_Increase": st.column_config.NumberColumn("Increase", format="£%.2f")}, 
-                                 use_container_width=True, hide_index=True)
-                with r1c2:
-                    st.subheader(f"Top 10 Price Decreases ({chosen_ticket})")
-                    dec_disp = df.sort_values('Diff', ascending=True).head(10).copy()
-                    dec_disp['Diff'] = dec_disp['Diff'].abs()
-                    st.dataframe(dec_disp[['Origin Description', 'Destination Description', 'Display_Original_Fare', 'Display_New_Fare', 'Diff']], 
-                                 column_config={"Display_Original_Fare": st.column_config.NumberColumn("Original", format="£%.2f"), "Display_New_Fare": st.column_config.NumberColumn("New Fare", format="£%.2f"), "Diff": st.column_config.NumberColumn("Decrease", format="-£%.2f")}, 
-                                 use_container_width=True, hide_index=True)
 
             # 🟢 START OF TAB 2 CONTENTS (Split-ticketing & Long-Buying Opportunities)
             with tab2:
@@ -776,6 +758,24 @@ if uploaded_files:
                                         if base_prices[id_sn] > base_prices[id_sf] + 0.01: lb_before += 1
                     lb_after = len(lb_gaps)
                     st.markdown(f"**Long-buying opportunities solved:** {lb_before - lb_after}<br>**Remaining:** {lb_after}", unsafe_allow_html=True)
+
+                # =========================================================================
+                # --- BOTTOM AGGREGATIONS AND METRICS TABLES (NOW IN TAB 2) ---
+                # =========================================================================
+                st.divider()
+                r2c3, r2c4 = st.columns(2)
+                with r2c3:
+                    st.subheader(f"Top 10 Price Increases ({chosen_ticket})")
+                    st.dataframe(df.sort_values('Opt_Increase', ascending=False).head(10)[['Origin Description', 'Destination Description', 'Display_Original_Fare', 'Display_New_Fare', 'Opt_Increase']], 
+                                 column_config={"Display_Original_Fare": st.column_config.NumberColumn("Baseline", format="£%.2f"), "Display_New_Fare": st.column_config.NumberColumn("New Fare", format="£%.2f"), "Opt_Increase": st.column_config.NumberColumn("Increase", format="£%.2f")}, 
+                                 use_container_width=True, hide_index=True)
+                with r2c4:
+                    st.subheader(f"Top 10 Price Decreases ({chosen_ticket})")
+                    dec_disp = df.sort_values('Diff', ascending=True).head(10).copy()
+                    dec_disp['Diff'] = dec_disp['Diff'].abs()
+                    st.dataframe(dec_disp[['Origin Description', 'Destination Description', 'Display_Original_Fare', 'Display_New_Fare', 'Diff']], 
+                                 column_config={"Display_Original_Fare": st.column_config.NumberColumn("Original", format="£%.2f"), "Display_New_Fare": st.column_config.NumberColumn("New Fare", format="£%.2f"), "Diff": st.column_config.NumberColumn("Decrease", format="-£%.2f")}, 
+                                 use_container_width=True, hide_index=True)
 
         # 🟢 FALL BACK OUT OF TABS STRUCTURE FOR MAIN SUMMARY BASE
         # --- ROW 3: JOURNEY & REVENUE IMPACT TABLES ---
