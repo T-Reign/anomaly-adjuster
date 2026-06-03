@@ -633,9 +633,10 @@ if uploaded_files:
                     if chart_data_comparison:
                         df_comp = pd.DataFrame(chart_data_comparison)
                         
-                        # Last-minute addtion 1: Pre-formatted string with the sign on the outside of the symbol
                         df_comp["Variance_Text"] = df_comp["Change (£)"].apply(
-                            lambda x: f"+£{x:.2f}" if x > 0 else f"-£{abs(x):.2f}" if x < 0 else "£0.00" if pd.notna(x) else ""
+                            lambda x: f"+£{x:.2f}" if pd.notna(x) and x > 0.01 else 
+                                      f"-£{abs(x):.2f}" if pd.notna(x) and x < -0.01 else 
+                                      "£0.00" if pd.notna(x) else ""
                         )
                         
                         fig_comp = go.Figure()
