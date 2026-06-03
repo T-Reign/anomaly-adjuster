@@ -236,7 +236,7 @@ if uploaded_files:
             rev_id = f"{parts[1]}-{parts[0]}"
             highest = max(row['Original_7DS'], raw_7ds_map.get(rev_id, 0))
             val = highest if slp_enabled else row['Original_7DS']
-            return float(val)
+            return round(val / 0.10) * 0.10
 
         df['New_7DS'] = df.apply(initial_prep_7ds, axis=1)
         df['Base_Price_7DS'] = df['New_7DS'].copy()
@@ -322,15 +322,15 @@ if uploaded_files:
                                     curr_sdr[id_ac] = max(pot_dec, df.loc[df['Match_ID']==id_ac, 'Floor_Price'].values[0])
 
                         # Fix 7DS split-ticketing anomalies
-                        if id_ac in curr_7ds:
-                            thru, s_sum = curr_7ds[id_ac], curr_7ds[id_ab] + curr_7ds.get(id_bc, 9999)
-                            if s_sum < (thru - 0.009):
-                                if id_bc in curr_7ds and id_bc not in excluded_splits:
-                                    pot_inc = curr_7ds[id_bc] + (thru - s_sum)/2
-                                    curr_7ds[id_bc] = min(pot_inc, df.loc[df['Match_ID']==id_bc, 'Ceiling_Price_7DS'].values[0])
-                                if id_ac not in excluded_splits:
-                                    pot_dec = curr_7ds[id_ab] + curr_7ds[id_bc]
-                                    curr_7ds[id_ac] = max(pot_dec, df.loc[df['Match_ID']==id_ac, 'Floor_Price_7DS'].values[0])
+                       if id_ac in curr_7ds:
+                           thru, s_sum = curr_7ds[id_ac], curr_7ds[id_ab] + curr_7ds.get(id_bc, 9999)
+                           if s_sum < (thru - 0.009):
+                               if id_bc in curr_7ds and id_bc not in excluded_splits:
+                                   pot_inc = curr_7ds[id_bc] + (thru - s_sum)/2
+                                   curr_7ds[id_bc] = round(min(pot_inc, df.loc[df['Match_ID']==id_bc, 'Ceiling_Price_7DS'].values[0]) / 0.10) * 0.10
+                               if id_ac not in excluded_splits:
+                                   pot_dec = curr_7ds[id_ab] + curr_7ds[id_bc]
+                                   curr_7ds[id_ac] = round(max(pot_dec, df.loc[df['Match_ID']==id_ac, 'Floor_Price_7DS'].values[0]) / 0.10) * 0.10
             
             # Line of route long buying corridor loops
             for path in SEQUENCES.values():
@@ -380,7 +380,7 @@ if uploaded_files:
                     c1, f1 = df.loc[df['Match_ID']==mid, ['Ceiling_Price_7DS','Floor_Price_7DS']].values[0]
                     c2, f2 = df.loc[df['Match_ID']==rev, ['Ceiling_Price_7DS','Floor_Price_7DS']].values[0]
                     final_val = min(max(unified, min(f1, f2)), max(c1, c2))
-                    final_prices_7ds[mid] = final_prices_7ds[rev] = float(final_val)
+                    final_prices_7ds[mid] = final_prices_7ds[rev] = round(final_val / 0.10) * 0.10
             df['New_7DS'] = df['Match_ID'].map(final_prices_7ds)
 
         # --- Calculate elasticities ---
