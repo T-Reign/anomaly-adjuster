@@ -778,16 +778,16 @@ if uploaded_files:
                         clean_path = [p.replace(" ", "") for p in path]
                         for i, s in enumerate(clean_path):
                             for j, n in enumerate(clean_path[i+1:], i+1):
-                            id_sn = f"{s}-{n}"
-                            for k, f in enumerate(clean_path[j+1:], j+1):
-                                id_sf = f"{s}-{f}"
-                                if id_sn in f_prices and id_sf in f_prices:
-                                    near, far = f_prices[id_sn], f_prices[id_sf]
-                                    if near > far + 0.01:
-                                        lb_gaps.append({
-                                            "Origin(A)": path[i].title(), "Destination(B)": path[j].title(), "Following Stn(C)": path[k].title(),
-                                            "Price to B": near, "Price to C": far, "Difference": round(near - far, 2)
-                                        })
+                                id_sn = f"{s}-{n}"
+                                for k, f in enumerate(clean_path[j+1:], j+1):
+                                    id_sf = f"{s}-{f}"
+                                    if id_sn in f_prices and id_sf in f_prices:
+                                        near, far = f_prices[id_sn], f_prices[id_sf]
+                                        if near > far + 0.01:
+                                            lb_gaps.append({
+                                                "Origin(A)": path[i].title(), "Destination(B)": path[j].title(), "Following Stn(C)": path[k].title(),
+                                                "Price to B": near, "Price to C": far, "Difference": round(near - far, 2)
+                                            })
                     if lb_gaps:
                         st.dataframe(pd.DataFrame(lb_gaps).sort_values("Difference", ascending=False).head(30),
                             column_config={"Price to B": st.column_config.NumberColumn(format="£%.2f"), "Price to C": st.column_config.NumberColumn(format="£%.2f"), "Difference": st.column_config.NumberColumn(format="£%.2f")},
