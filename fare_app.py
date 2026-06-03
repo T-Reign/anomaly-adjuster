@@ -448,11 +448,11 @@ if uploaded_files:
                     list(display_options.keys()), horizontal=True
                 )
                 active_route = display_options[selected_path_name]
-                st.success(f" **{selected_path_name}** corridor.")
+                st.success(f". **{selected_path_name}** corridor.")
             else:
                 active_route = list(matching_routes.keys())[0]
                 associated_sequences = matching_routes[active_route]
-                st.success(f" **{associated_sequences[0]}** corridor.")
+                st.success(f". **{associated_sequences[0]}** corridor.")
             
             # Create price dictionary mappings for both underlying logic tables
             sdr_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
