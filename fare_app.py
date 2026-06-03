@@ -75,52 +75,25 @@ def derive_fare(base_sdr, fare_type, current_7ds=0.0):
     elif fare_type == "7DS":
         return current_7ds
     return base_sdr
+    # --- CACHED PROCESSING FUNCTION ---
+@st.cache_data
+def process_data(uploaded_files, slp_enabled, sdr_rounding, inc_cap, dec_cap, 
+                 enable_low_vol, low_vol_threshold, low_vol_action, 
+                 enable_high_rev, high_rev_threshold, high_rev_action):
+    
+    all_dfs = []
+    all_jr_dfs = []
+    
+    for f in uploaded_files:
+        df_main = pd.read_excel(f, sheet_name='Main Sheet', header=1)
+        all_dfs.append(df_main)
+        try:
+            df_jr_raw = pd.read_excel(f, sheet_name='Journeys and Revenue')
+            all_jr_dfs.append(df_jr_raw)
+        except: continue
 
-# --- 2. SIDEBAR ---
-st.sidebar.header("1. Ticket Type Filter")
-ticket_options = {
-    "SDR (Anytime Day Return)": "SDR",
-    "SDS (Anytime Day Single)": "SDS",
-    "CDS (Off-Peak Day Single)": "CDS",
-    "CDR (Off-Peak Day Return)": "CDR",
-    "7DS (7-Day Season Ticket)": "7DS"
-}
-selected_ticket_label = st.sidebar.selectbox(" Ticket Type:", list(ticket_options.keys()))
-chosen_ticket = ticket_options[selected_ticket_label]
-
-st.sidebar.header("2. Split-Ticket Exclusions")
-raw_split_ex = st.sidebar.text_area("Flows to exclude from split adjustment:", value="Reading-Earley")
-excluded_splits = {line.strip().upper().replace(" ", "") for line in raw_split_ex.split('\n') if "-" in line}
-
-st.sidebar.header("3. Long-Buy Exclusions")
-raw_lb_ex = st.sidebar.text_area("Flows to exclude from long-buy adjustment:", value="Aldershot-Oxshott")
-excluded_longbuys = {line.strip().upper().replace(" ", "") for line in raw_lb_ex.split('\n') if "-" in line}
-
-st.sidebar.header("4. Optimisation Settings")
-slp_enabled = st.sidebar.checkbox("Enable Single-Leg Pricing", value=True)
-sdr_rounding = st.sidebar.select_slider("Rounding (£)", options=[0.00, 0.05, 0.10, 0.20, 0.50, 1.00], value=0.20)
-inc_cap = st.sidebar.slider("Maximum Increase (cap) (%)", 0, 70, 8) / 100
-dec_cap = st.sidebar.slider("Maximum Decrease (cap) (%)", 0, 70, 5) / 100
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("Low-Volume Adjustments")
-enable_low_vol = st.sidebar.checkbox("Enable Low-Volume Rules", value=True)
-low_vol_threshold = st.sidebar.number_input("Low Volume Threshold (Journeys)", value=1000, step=100)
-low_vol_action = st.sidebar.radio("Action for low-volume flows:", ["Double the Cap", "Ignore the Cap Completely"])
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("Revenue Protection Settings")
-enable_high_rev = st.sidebar.checkbox("Enable Revenue Protection", value=True)
-high_rev_threshold = st.sidebar.number_input("High Revenue Threshold (£)", value=30000, step=5000)
-high_rev_action = st.sidebar.radio("Action for high-revenue flows:", ["Halve the Decrease Cap", "Do Not Decrease At All"])
-ticket_elasticity = st.sidebar.slider("Demand Elasticity", -2.0, 0.0, -0.6, step=0.05)
-
-uploaded_files = st.sidebar.file_uploader("Upload Fare Spreadsheets", type=["xlsx"], accept_multiple_files=True)
-
-# --- 3. PROCESSING ---
-if uploaded_files:
-    with st.spinner("Calculating New Fares and Passenger Impact..."):
-        all_dfs = []
+    df = pd.concat(all_dfs, ignore_index=True)
+    all_dfs = []
         all_jr_dfs = []
         
         for f in uploaded_files:
@@ -402,6 +375,64 @@ if uploaded_files:
         
         df['Revenue_Impact'] = df['New_Ticket_Revenue'] - df['Old_Ticket_Revenue']
         df['Abs_Revenue_Impact'] = df['Revenue_Impact'].abs()
+    
+    return df
+
+# --- 2. SIDEBAR ---
+st.sidebar.header("1. Ticket Type Filter")
+ticket_options = {
+    "SDR (Anytime Day Return)": "SDR",
+    "SDS (Anytime Day Single)": "SDS",
+    "CDS (Off-Peak Day Single)": "CDS",
+    "CDR (Off-Peak Day Return)": "CDR",
+    "7DS (7-Day Season Ticket)": "7DS"
+}
+selected_ticket_label = st.sidebar.selectbox(" Ticket Type:", list(ticket_options.keys()))
+chosen_ticket = ticket_options[selected_ticket_label]
+
+st.sidebar.header("2. Split-Ticket Exclusions")
+raw_split_ex = st.sidebar.text_area("Flows to exclude from split adjustment:", value="Reading-Earley")
+excluded_splits = {line.strip().upper().replace(" ", "") for line in raw_split_ex.split('\n') if "-" in line}
+
+st.sidebar.header("3. Long-Buy Exclusions")
+raw_lb_ex = st.sidebar.text_area("Flows to exclude from long-buy adjustment:", value="Aldershot-Oxshott")
+excluded_longbuys = {line.strip().upper().replace(" ", "") for line in raw_lb_ex.split('\n') if "-" in line}
+
+st.sidebar.header("4. Optimisation Settings")
+slp_enabled = st.sidebar.checkbox("Enable Single-Leg Pricing", value=True)
+sdr_rounding = st.sidebar.select_slider("Rounding (£)", options=[0.00, 0.05, 0.10, 0.20, 0.50, 1.00], value=0.20)
+inc_cap = st.sidebar.slider("Maximum Increase (cap) (%)", 0, 70, 8) / 100
+dec_cap = st.sidebar.slider("Maximum Decrease (cap) (%)", 0, 70, 5) / 100
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("Low-Volume Adjustments")
+enable_low_vol = st.sidebar.checkbox("Enable Low-Volume Rules", value=True)
+low_vol_threshold = st.sidebar.number_input("Low Volume Threshold (Journeys)", value=1000, step=100)
+low_vol_action = st.sidebar.radio("Action for low-volume flows:", ["Double the Cap", "Ignore the Cap Completely"])
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("Revenue Protection Settings")
+enable_high_rev = st.sidebar.checkbox("Enable Revenue Protection", value=True)
+high_rev_threshold = st.sidebar.number_input("High Revenue Threshold (£)", value=30000, step=5000)
+high_rev_action = st.sidebar.radio("Action for high-revenue flows:", ["Halve the Decrease Cap", "Do Not Decrease At All"])
+ticket_elasticity = st.sidebar.slider("Demand Elasticity", -2.0, 0.0, -0.6, step=0.05)
+
+uploaded_files = st.sidebar.file_uploader("Upload Fare Spreadsheets", type=["xlsx"], accept_multiple_files=True)
+
+# --- 3. PROCESSING ---
+if uploaded_files:
+    with st.spinner("Calculating New Fares..."):
+        # The heavy lifting is now cached
+        df = process_data(uploaded_files, slp_enabled, sdr_rounding, inc_cap, dec_cap, 
+                          enable_low_vol, low_vol_threshold, low_vol_action, 
+                          enable_high_rev, high_rev_threshold, high_rev_action)
+
+    # LIGHTWEIGHT FILTERING: 
+    # Because 'df' is now returned by the cache, this part runs instantly 
+    # even when you change 'chosen_ticket'.
+    df['Display_Original_Fare'] = df.apply(lambda r: derive_fare(r['Original_SDR'], chosen_ticket, r['Original_7DS']), axis=1)
+    df['Display_New_Fare'] = df.apply(lambda r: derive_fare(r['New_SDR'], chosen_ticket, r['New_7DS']), axis=1)
+        
 
         # ============================================
         # --- AUTOMATED: ROUTE ANALYTICS DASHBOARD ---
