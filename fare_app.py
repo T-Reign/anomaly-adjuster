@@ -418,8 +418,8 @@ if uploaded_files:
     # LIGHTWEIGHT FILTERING: 
     # Because 'df' is now returned by the cache, this part runs instantly 
     # even when you change 'chosen_ticket'.
-    df['Display_Original_Fare'] = df.apply(lambda r: derive_fare(r['Original_SDR'], chosen_ticket, r['Original_7DS']), axis=1)
-    df['Display_New_Fare'] = df.apply(lambda r: derive_fare(r['New_SDR'], chosen_ticket, r['New_7DS']), axis=1)
+        df['Display_Original_Fare'] = df.apply(lambda r: derive_fare(r['Original_SDR'], chosen_ticket, r['Original_7DS']), axis=1)
+        df['Display_New_Fare'] = df.apply(lambda r: derive_fare(r['New_SDR'], chosen_ticket, r['New_7DS']), axis=1)
         
 
         # ============================================
