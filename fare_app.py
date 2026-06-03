@@ -448,11 +448,11 @@ if uploaded_files:
                     list(display_options.keys()), horizontal=True
                 )
                 active_route = display_options[selected_path_name]
-                st.success(f". **{selected_path_name}** corridor.")
+                st.success(f"Taelin **{selected_path_name}** corridor.")
             else:
                 active_route = list(matching_routes.keys())[0]
                 associated_sequences = matching_routes[active_route]
-                st.success(f". **{associated_sequences[0]}** corridor.")
+                st.success(f"Taelin **{associated_sequences[0]}** corridor.")
             
             # Create price dictionary mappings for both underlying logic tables
             sdr_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
@@ -666,8 +666,8 @@ if uploaded_files:
                         ))
                         
                         fig_comp.update_layout(
-                            title=f"{chosen_ticket} Progression Outward from {start_stn.title()}",
-                            xaxis_title="Destination Milestone Stops", yaxis_title="Fare Price (£)",
+                            title=f"{chosen_ticket} Fares Outward from {start_stn.title()}",
+                            xaxis_title="Line of Route Destinations", yaxis_title="Fare Price (£)",
                             template="plotly_white", 
                             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                             hovermode="x unified"
@@ -806,12 +806,12 @@ if uploaded_files:
             total_new_journeys = df['Predicted_Journeys'].sum()
             journey_delta = total_new_journeys - total_prev_journeys
             
-            m1.metric(label=f"Previous {chosen_ticket} Journeys", value=f"{total_prev_journeys:,.0f}")
-            m2.metric(label=f"New Predicted {chosen_ticket} Journeys", value=f"{total_new_journeys:,.0f}", delta=f"{journey_delta:+,.0f}")
+            m1.metric(label=f"Current {chosen_ticket} Journeys", value=f"{total_prev_journeys:,.0f}")
+            m2.metric(label=f"Estimated {chosen_ticket} Journeys", value=f"{total_new_journeys:,.0f}", delta=f"{journey_delta:+,.0f}")
                          
         with r3c2:
             st.subheader("Biggest Revenue Impacts")
-            st.caption(f"Flows with the largest financial variance ({chosen_ticket} only")
+            st.caption(f"Flows with the largest financial variance ({chosen_ticket} only)")
             
             # Revenue impacts table, might expand list
             revenue_changes = df.sort_values('Abs_Revenue_Impact', ascending=False).head(10).copy()
@@ -838,8 +838,8 @@ if uploaded_files:
             # Pre-format the £ to put the "-" sign on on the outside
             revenue_delta_str = f"+£{revenue_delta:,.0f}" if revenue_delta > 0 else f"-£{abs(revenue_delta):,.0f}" if revenue_delta < 0 else "£0"
             
-            m3.metric(label=f"Previous {chosen_ticket} Yield", value=f"£{total_prev_rev:,.0f}")
-            m4.metric(label=f"New Predicted {chosen_ticket} Yield", value=f"£{total_new_rev:,.0f}", delta=revenue_delta_str)
+            m3.metric(label=f"Current {chosen_ticket} Revenue", value=f"£{total_prev_rev:,.0f}")
+            m4.metric(label=f"Estimated {chosen_ticket} Revenue", value=f"£{total_new_rev:,.0f}", delta=revenue_delta_str)
 
         st.divider()
         st.subheader("Full Fare Summary")
