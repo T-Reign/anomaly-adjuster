@@ -664,7 +664,7 @@ if uploaded_files:
                         if df_comp["Old Fare (£)"].notna().any():
                             fig_comp.add_trace(go.Scatter(
                                 x=df_comp["Station"], y=df_comp["Old Fare (£)"], mode="lines+markers",
-                                name="Fares Today", line=dict(color="#1f77b4", width=3), marker=dict(size=8),
+                                name="Current Fare", line=dict(color="#1f77b4", width=3), marker=dict(size=8),
                                 connectgaps=True, # If a random station in the middle is 0, it neatly connects the rest
                                 hovertemplate="<b>To: %{x}</b><br>Fares Today: £%{y:.2f}<extra></extra>"
                             ))
@@ -673,14 +673,14 @@ if uploaded_files:
                         if chosen_ticket in ["CDR", "CDS"] and df_comp["Old Super Off-Peak (£)"].notna().any():
                             fig_comp.add_trace(go.Scatter(
                                 x=df_comp["Station"], y=df_comp["Old Super Off-Peak (£)"], mode="lines+markers",
-                                name="Old Super Off-Peak (Withdrawn)", line=dict(color="orange", width=2, dash="dot"), marker=dict(size=6),
+                                name="Current Super Off-Peak (Withdrawn)", line=dict(color="orange", width=2, dash="dot"), marker=dict(size=6),
                                 hovertemplate="<b>To: %{x}</b><br>Withdrawn SOP Fare: £%{y:.2f}<extra></extra>"
                             ))
                         
                         # Red Line: New Oval Fares
                         fig_comp.add_trace(go.Scatter(
                             x=df_comp["Station"], y=df_comp["New Fare (£)"], mode="lines+markers",
-                            name=f"New Optimized {chosen_ticket}", line=dict(color="#d62728", width=3), marker=dict(size=8),
+                            name=f"New {chosen_ticket} Fare", line=dict(color="#d62728", width=3), marker=dict(size=8),
                             customdata=df_comp["Variance_Text"], # 2. UPDATED: Points to our newly formatted text field
                             hovertemplate="<b>To: %{x}</b><br>New Fare: £%{y:.2f}<br>True Variance: %{customdata}<extra></extra>" if df_comp["Change (£)"].notna().any() else "<b>To: %{x}</b><br>New Fare: £%{y:.2f}<extra></extra>" # 3. UPDATED: Simplified clean token string display
                         ))
