@@ -322,15 +322,15 @@ if uploaded_files:
                                     curr_sdr[id_ac] = max(pot_dec, df.loc[df['Match_ID']==id_ac, 'Floor_Price'].values[0])
 
                         # Fix 7DS split-ticketing anomalies
-                       if id_ac in curr_7ds:
-                           thru, s_sum = curr_7ds[id_ac], curr_7ds[id_ab] + curr_7ds.get(id_bc, 9999)
-                           if s_sum < (thru - 0.009):
-                               if id_bc in curr_7ds and id_bc not in excluded_splits:
-                                   pot_inc = curr_7ds[id_bc] + (thru - s_sum)/2
-                                   curr_7ds[id_bc] = round(min(pot_inc, df.loc[df['Match_ID']==id_bc, 'Ceiling_Price_7DS'].values[0]) / 0.10) * 0.10
-                               if id_ac not in excluded_splits:
-                                   pot_dec = curr_7ds[id_ab] + curr_7ds[id_bc]
-                                   curr_7ds[id_ac] = round(max(pot_dec, df.loc[df['Match_ID']==id_ac, 'Floor_Price_7DS'].values[0]) / 0.10) * 0.10
+                        if id_ac in curr_7ds:
+                            thru, s_sum = curr_7ds[id_ac], curr_7ds[id_ab] + curr_7ds.get(id_bc, 9999)
+                            if s_sum < (thru - 0.009):
+                                if id_bc in curr_7ds and id_bc not in excluded_splits:
+                                    pot_inc = curr_7ds[id_bc] + (thru - s_sum)/2
+                                    curr_7ds[id_bc] = round(min(pot_inc, df.loc[df['Match_ID']==id_bc, 'Ceiling_Price_7DS'].values[0]) / 0.10) * 0.10
+                                if id_ac not in excluded_splits:
+                                    pot_dec = curr_7ds[id_ab] + curr_7ds[id_bc]
+                                    curr_7ds[id_ac] = round(max(pot_dec, df.loc[df['Match_ID']==id_ac, 'Floor_Price_7DS'].values[0]) / 0.10) * 0.10
             
             # Line of route long buying corridor loops
             for path in SEQUENCES.values():
