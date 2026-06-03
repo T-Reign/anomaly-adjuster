@@ -720,12 +720,21 @@ if uploaded_files:
                 # --- BOTTOM ANOMALY OPPORTUNITIES ---
                 # =========================================================================
                 st.divider()
+        
+                # REBUILD MAPPINGS FROM DATAFRAME
+                f_prices = df.set_index('Match_ID')['Display_New_Fare'].to_dict()
+                base_prices = df.set_index('Match_ID')['Display_Original_Fare'].to_dict()
+                n_map = df.set_index('Origin_N')['Origin Description'].to_dict()
+        
+                # REBUILD ADJACENCY MATRIX
+                adj = defaultdict(list)
+                for mid in df['Match_ID'].unique():
+                    o, d = mid.split("-")
+                    adj[o].append(d)
+
                 r2c3, r2c4 = st.columns(2)
                 with r2c3:
                     st.subheader("Remaining Split-Ticketing Opportunities")
-                    f_prices = df.set_index('Match_ID')['Display_New_Fare'].to_dict()
-                    base_prices = df.set_index('Match_ID')['Display_Original_Fare'].to_dict()
-                    n_map = df.set_index('Origin_N')['Origin Description'].to_dict()
                     gaps = []
                     for A in adj:
                         for B in adj[A]:
@@ -740,6 +749,7 @@ if uploaded_files:
                                             "Split At": str(n_map.get(B, B)).title(), 
                                             "New Fare": thru, "Split Fare": s_sum, "Difference": round(thru - s_sum, 2)
                                         })
+                    # ... (Rest of your original split table code remains the same)
                     if gaps:
                         st.dataframe(pd.DataFrame(gaps).sort_values('Difference', ascending=False).head(300), 
                                      column_config={"New Fare": st.column_config.NumberColumn(format="£%.2f"), "Split Fare": st.column_config.NumberColumn(format="£%.2f"), "Difference": st.column_config.NumberColumn(format="£%.2f")},
@@ -768,20 +778,20 @@ if uploaded_files:
                         clean_path = [p.replace(" ", "") for p in path]
                         for i, s in enumerate(clean_path):
                             for j, n in enumerate(clean_path[i+1:], i+1):
-                                id_sn = f"{s}-{n}"
-                                for k, f in enumerate(clean_path[j+1:], j+1):
-                                    id_sf = f"{s}-{f}"
-                                    if id_sn in f_prices and id_sf in f_prices:
-                                        near, far = f_prices[id_sn], f_prices[id_sf]
-                                        if near > far + 0.01:
-                                            lb_gaps.append({
-                                                "Origin(A)": path[i].title(), "Destination(B)": path[j].title(), "Following Stn(C)": path[k].title(),
-                                                "Price to B": near, "Price to C": far, "Difference": round(near - far, 2)
-                                            })
+                            id_sn = f"{s}-{n}"
+                            for k, f in enumerate(clean_path[j+1:], j+1):
+                                id_sf = f"{s}-{f}"
+                                if id_sn in f_prices and id_sf in f_prices:
+                                    near, far = f_prices[id_sn], f_prices[id_sf]
+                                    if near > far + 0.01:
+                                        lb_gaps.append({
+                                            "Origin(A)": path[i].title(), "Destination(B)": path[j].title(), "Following Stn(C)": path[k].title(),
+                                            "Price to B": near, "Price to C": far, "Difference": round(near - far, 2)
+                                        })
                     if lb_gaps:
-                       st.dataframe(pd.DataFrame(lb_gaps).sort_values("Difference", ascending=False).head(30),
-                           column_config={"Price to B": st.column_config.NumberColumn(format="£%.2f"), "Price to C": st.column_config.NumberColumn(format="£%.2f"), "Difference": st.column_config.NumberColumn(format="£%.2f")},
-                           use_container_width=True, hide_index=True)
+                        st.dataframe(pd.DataFrame(lb_gaps).sort_values("Difference", ascending=False).head(30),
+                            column_config={"Price to B": st.column_config.NumberColumn(format="£%.2f"), "Price to C": st.column_config.NumberColumn(format="£%.2f"), "Difference": st.column_config.NumberColumn(format="£%.2f")},
+                            use_container_width=True, hide_index=True)
                     else:
                         st.info("No Long-Buying Opportunities Found")
                         
