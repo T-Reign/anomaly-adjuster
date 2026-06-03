@@ -670,10 +670,10 @@ if uploaded_files:
                             ))
                         
                         # Orange Dotted Line: Super Off-Peak Reference
-                        if chosen_ticket in ["CDR", "CDS"] and df_comp["Old Super Off-Peak (£)"].notna().any():
+                        if chosen_ticket in ["CDR", "CDS"] and df_comp["Super Off-Peak (£)"].notna().any():
                             fig_comp.add_trace(go.Scatter(
-                                x=df_comp["Station"], y=df_comp["Old Super Off-Peak (£)"], mode="lines+markers",
-                                name="Current Super Off-Peak (Withdrawn)", line=dict(color="orange", width=2, dash="dot"), marker=dict(size=6),
+                                x=df_comp["Station"], y=df_comp["Super Off-Peak (£)"], mode="lines+markers",
+                                name="Super Off-Peak Fare (Withdrawn)", line=dict(color="orange", width=2, dash="dot"), marker=dict(size=6),
                                 hovertemplate="<b>To: %{x}</b><br>Withdrawn SOP Fare: £%{y:.2f}<extra></extra>"
                             ))
                         
