@@ -430,7 +430,7 @@ if uploaded_files:
                     direction_label = ""
                 else:
                     path_slice = tuple(seq_list[e_idx:s_idx + 1][::-1])
-                    direction_label = " "
+                    direction_label = ""
                     
                 if path_slice not in matching_routes:
                     matching_routes[path_slice] = []
@@ -452,7 +452,7 @@ if uploaded_files:
             else:
                 active_route = list(matching_routes.keys())[0]
                 associated_sequences = matching_routes[active_route]
-                st.success(f"Displaying Additional **{associated_sequences[0]}** corridor.")
+                st.success(f"Displaying **{associated_sequences[0]}** corridor.")
             
             # Create price dictionary mappings for both underlying logic tables
             sdr_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
