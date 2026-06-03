@@ -57,7 +57,7 @@ def round_up(x, base):
     rounded_up = math.ceil(round(multiplied, 7)) / (1/base)
     return round(rounded_up, 2)
 
-# --- Rounding for SDR>SDS>CDS>CDR ---
+# --- Dynamic Multi-Fare Calculation Helper Function ---
 def derive_fare(base_sdr, fare_type, current_7ds=0.0):
     if pd.isna(base_sdr) or base_sdr <= 0:
         return 0.0
@@ -77,15 +77,15 @@ def derive_fare(base_sdr, fare_type, current_7ds=0.0):
     return base_sdr
 
 # --- 2. SIDEBAR ---
-st.sidebar.header("1. Ticket Type Filter")
+st.sidebar.header("1. Ticket Type Config")
 ticket_options = {
-    "SDR (Anytime Day Return)": "SDR",
-    "SDS (Anytime Day Single)": "SDS",
-    "CDS (Off-Peak Day Single)": "CDS",
-    "CDR (Off-Peak Day Return)": "CDR",
+    "SDR (Standard Day Return)": "SDR",
+    "SDS (Standard Day Single)": "SDS",
+    "CDS (Cheap Day Single)": "CDS",
+    "CDR (Cheap Day Return)": "CDR",
     "7DS (7-Day Season Ticket)": "7DS"
 }
-selected_ticket_label = st.sidebar.selectbox(" Ticket Type:", list(ticket_options.keys()))
+selected_ticket_label = st.sidebar.selectbox(" Analysis Mode Ticket Type:", list(ticket_options.keys()))
 chosen_ticket = ticket_options[selected_ticket_label]
 
 st.sidebar.header("2. Split-Ticket Exclusions")
@@ -109,7 +109,7 @@ low_vol_threshold = st.sidebar.number_input("Low Volume Threshold (Journeys)", v
 low_vol_action = st.sidebar.radio("Action for low-volume flows:", ["Double the Cap", "Ignore the Cap Completely"])
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("Revenue Protection Settings")
+st.sidebar.subheader("Revenue Protection Guardrails")
 enable_high_rev = st.sidebar.checkbox("Enable Revenue Protection", value=True)
 high_rev_threshold = st.sidebar.number_input("High Revenue Threshold (£)", value=30000, step=5000)
 high_rev_action = st.sidebar.radio("Action for high-revenue flows:", ["Halve the Decrease Cap", "Do Not Decrease At All"])
@@ -119,7 +119,7 @@ uploaded_files = st.sidebar.file_uploader("Upload Fare Spreadsheets", type=["xls
 
 # --- 3. PROCESSING ---
 if uploaded_files:
-    with st.spinner("Calculating New Fares and Passenger Impact..."):
+    with st.spinner("Calculating Optimised Network & Merging Revenue..."):
         all_dfs = []
         all_jr_dfs = []
         
@@ -187,9 +187,9 @@ if uploaded_files:
                 '2BDY': 'CDR',
                 '2MQA': '7DS', '1MQA': '7DS',
                 
-                # Super Off-Peak shifts to Standard Off-Peak for Pax/Journey impact
-                '2BHA': 'CDR', '2HYV': 'CDR',  # EVB & SUB returns integrate into CDR
-                '2ADO': 'CDS', '2HYU': 'CDS'   # EVA & SUA singles integrate into CDS
+                # Super Off-Peak shifts to Standard Off-Peak pipelines
+                '2BHA': 'CDR', '2HYV': 'CDR',  # EVB & SUB returns migrate to CDR
+                '2ADO': 'CDS', '2HYU': 'CDS'   # EVA & SUA singles migrate to CDS
             }
             
             df_jr['Product_Clean'] = df_jr['Product Code'].astype(str).str.strip().str.upper()
@@ -219,7 +219,7 @@ if uploaded_files:
             df['Filtered_Journeys'] = 0
             df['Filtered_Revenue'] = 0.0
         
-        # --- New SDR fare output ---
+        # --- PREPARE SDR GRIDS ---
         def initial_prep(row):
             parts = row['Match_ID'].split("-")
             rev_id = f"{parts[1]}-{parts[0]}"
@@ -230,7 +230,7 @@ if uploaded_files:
         df['New_SDR'] = df.apply(initial_prep, axis=1)
         df['Base_Price'] = df['New_SDR'].copy()
 
-        # --- New 7DS fare output ---
+        # --- PREPARE 7DS GRIDS (PRESERVING PRECISION FLOATS) ---
         def initial_prep_7ds(row):
             parts = row['Match_ID'].split("-")
             rev_id = f"{parts[1]}-{parts[0]}"
@@ -241,7 +241,7 @@ if uploaded_files:
         df['New_7DS'] = df.apply(initial_prep_7ds, axis=1)
         df['Base_Price_7DS'] = df['New_7DS'].copy()
 
-        # --- SDR adjustments, ceiling & floor caps for J/R---
+        # --- CALCULATE SDR CEILING & FLOOR CAPS ---
         def calculate_ceiling(row):
             if enable_low_vol and (row['Total_Journeys'] < low_vol_threshold):
                 if low_vol_action == "Ignore the Cap Completely":
@@ -268,7 +268,7 @@ if uploaded_files:
 
         df['Floor_Price'] = df.apply(calculate_floor, axis=1)
 
-        # --- 7DS adjustments, ceiling & floor caps for J/R ---
+        # --- CALCULATE 7DS CEILING & FLOOR CAPS ---
         def calculate_ceiling_7ds(row):
             if enable_low_vol and (row['Total_Journeys'] < low_vol_threshold):
                 if low_vol_action == "Ignore the Cap Completely":
@@ -310,7 +310,7 @@ if uploaded_files:
                     for C in adj[B]:
                         id_ac, id_ab, id_bc = f"{A}-{C}", f"{A}-{B}", f"{B}-{C}"
                         
-                        # Fix SDR split-ticketing anomalies
+                        # Fix SDR split ticketing anomalies
                         if id_ac in curr_sdr:
                             thru, s_sum = curr_sdr[id_ac], curr_sdr[id_ab] + curr_sdr.get(id_bc, 9999)
                             if s_sum < (thru - 0.009):
@@ -321,7 +321,7 @@ if uploaded_files:
                                     pot_dec = round_up(curr_sdr[id_ab] + curr_sdr[id_bc], sdr_rounding)
                                     curr_sdr[id_ac] = max(pot_dec, df.loc[df['Match_ID']==id_ac, 'Floor_Price'].values[0])
 
-                        # Fix 7DS split-ticketing anomalies
+                        # Fix 7DS split ticketing anomalies (Pure Float Math)
                         if id_ac in curr_7ds:
                             thru, s_sum = curr_7ds[id_ac], curr_7ds[id_ab] + curr_7ds.get(id_bc, 9999)
                             if s_sum < (thru - 0.009):
@@ -342,12 +342,12 @@ if uploaded_files:
                             f_c = f.replace(" ","")
                             id_near, id_far = f"{s_c}-{n_c}", f"{s_c}-{f_c}"
                             
-                            # Check long-buying for SDR
+                            # Check long buying for SDR
                             if id_near in curr_sdr and id_far in curr_sdr:
                                 if curr_sdr[id_near] > curr_sdr[id_far] and id_near not in excluded_longbuys:
                                     curr_sdr[id_near] = max(curr_sdr[id_far], df.loc[df['Match_ID']==id_near, 'Floor_Price'].values[0])
                                     
-                            # Check long-buying for 7DS
+                            # Check long buying for 7DS
                             if id_near in curr_7ds and id_far in curr_7ds:
                                 if curr_7ds[id_near] > curr_7ds[id_far] and id_near not in excluded_longbuys:
                                     curr_7ds[id_near] = max(curr_7ds[id_far], df.loc[df['Match_ID']==id_near, 'Floor_Price_7DS'].values[0])
@@ -357,7 +357,7 @@ if uploaded_files:
 
         # --- SINGLE-LEG DIRECTIONAL PRICING SYNCHRONISATION ---
         if slp_enabled:
-            # SDR directional alignment
+            # Process SDR directional alignment
             final_prices_sdr = df.set_index('Match_ID')['New_SDR'].to_dict()
             for mid in list(final_prices_sdr.keys()):
                 o, d = mid.split("-")
@@ -370,7 +370,7 @@ if uploaded_files:
                     final_prices_sdr[mid] = final_prices_sdr[rev] = round_up(final_val, sdr_rounding)
             df['New_SDR'] = df['Match_ID'].map(final_prices_sdr)
 
-            # 7DS directional alignment
+            # Process 7DS directional alignment
             final_prices_7ds = df.set_index('Match_ID')['New_7DS'].to_dict()
             for mid in list(final_prices_7ds.keys()):
                 o, d = mid.split("-")
@@ -383,7 +383,7 @@ if uploaded_files:
                     final_prices_7ds[mid] = final_prices_7ds[rev] = float(final_val)
             df['New_7DS'] = df['Match_ID'].map(final_prices_7ds)
 
-        # --- Calculate elasticities ---
+        # --- POPULATE OUTPUT METRICS AND YIELDS ---
         df['Display_Original_Fare'] = df.apply(lambda r: derive_fare(r['Original_SDR'], chosen_ticket, r['Original_7DS']), axis=1)
         df['Display_New_Fare'] = df.apply(lambda r: derive_fare(r['New_SDR'], chosen_ticket, r['New_7DS']), axis=1)
 
@@ -403,12 +403,12 @@ if uploaded_files:
         df['Revenue_Impact'] = df['New_Ticket_Revenue'] - df['Old_Ticket_Revenue']
         df['Abs_Revenue_Impact'] = df['Revenue_Impact'].abs()
 
-        # ============================================
-        # --- AUTOMATED: ROUTE ANALYTICS DASHBOARD ---
-        # ============================================
+        # =========================================================================
+        # --- AUTOMATED: ROUTE ANALYTICS HUB (AUTO-DETECT LINE OF ROUTE) ---
+        # =========================================================================
         st.divider()
-        st.subheader("Route Analytics Dashboard")
-        st.caption(f"Reviews SWR corridors using the new **{chosen_ticket}** pricing structure. The dashboards below display the relevant routes between an origin & destination station.")
+        st.subheader("Route Analytics Hub")
+        st.caption(f"Analyzing network corridors using **{chosen_ticket}** pricing structures. The engine automatically handles directionality and filters structural duplicates.")
         
         all_stations = sorted(list(set(stn for seq in SEQUENCES.values() for stn in seq)))
         
@@ -430,7 +430,7 @@ if uploaded_files:
                     direction_label = ""
                 else:
                     path_slice = tuple(seq_list[e_idx:s_idx + 1][::-1])
-                    direction_label = ""
+                    direction_label = " (Reverse)"
                     
                 if path_slice not in matching_routes:
                     matching_routes[path_slice] = []
@@ -444,15 +444,15 @@ if uploaded_files:
                     display_options[primary_name] = list(path_slice)
                 
                 selected_path_name = st.radio(
-                    " Multiple routes found. Select which route to analyse:",
+                    " Multiple distinct route corridors found! Select which route path to analyze:",
                     list(display_options.keys()), horizontal=True
                 )
                 active_route = display_options[selected_path_name]
-                st.success(f"Displaying **{selected_path_name}** corridor.")
+                st.success(f"**Route Discovered:** Analyzing via the **{selected_path_name}** corridor.")
             else:
                 active_route = list(matching_routes.keys())[0]
                 associated_sequences = matching_routes[active_route]
-                st.success(f"Displaying **{associated_sequences[0]}** corridor.")
+                st.success(f"**Route Discovered:** Analyzing via the **{associated_sequences[0]}** corridor.")
             
             # Create price dictionary mappings for both underlying logic tables
             sdr_prices = df.set_index('Match_ID')['New_SDR'].to_dict()
@@ -463,10 +463,10 @@ if uploaded_files:
             # Establish alternating matching product configurations
             if chosen_ticket in ["SDR", "CDR"]:
                 alt_product = "CDR"
-                alt_label = "CDR (Off-Peak Day Return)"
+                alt_label = "CDR (Cheap Day Return)"
             elif chosen_ticket in ["SDS", "CDS"]:
                 alt_product = "CDS"
-                alt_label = "CDS (Off-Peak Day Single)"
+                alt_label = "CDS (Cheap Day Single)"
             else:
                 alt_product = chosen_ticket
                 alt_label = chosen_ticket
@@ -477,7 +477,7 @@ if uploaded_files:
             direct_fare_id = f"{start_clean}-{end_clean}"
             direct_fare_new = f_prices_new.get(direct_fare_id, 0.0)
             
-            # --- Split-Ticketing Bar Chart ---
+            # --- GATHER DATA FOR MULTI-PRODUCT MIXED SPLIT BAR CHART ---
             chart_data_splits = []
             for i in range(1, len(active_route) - 1):
                 mid_stn = active_route[i]
@@ -487,7 +487,7 @@ if uploaded_files:
                 leg2_id = f"{mid_clean}-{end_clean}"
                 
                 if chosen_ticket == "7DS":
-                    # Separate 7DS process
+                    # Separate pipeline handling 7DS weekly season rules exclusively
                     l1_p = seasons_prices.get(leg1_id, 0.0)
                     l2_p = seasons_prices.get(leg2_id, 0.0)
                     
@@ -500,7 +500,7 @@ if uploaded_files:
                             "Mix B": 0.0, "Mix B L1": 0.0, "Mix B L2": 0.0
                         })
                 else:
-                    # Use SDR fares for other fares to use as reference
+                    # Fetch base optimized SDR value to accurately apply product variation rules
                     base_sdr_l1 = sdr_prices.get(leg1_id, 0.0)
                     base_sdr_l2 = sdr_prices.get(leg2_id, 0.0)
                     
@@ -528,7 +528,7 @@ if uploaded_files:
             # --- GATHER DATA FOR OLD VS NEW LINE COMPARATOR ---
             chart_data_comparison = []
             
-            # Map raw values from spreadsheet columns directly to dictionaries
+            # Map exact raw values from spreadsheet columns directly to dictionaries
             raw_sds_old_map = df.set_index('Match_ID')['Original_SDS'].to_dict()
             raw_cds_old_map = df.set_index('Match_ID')['Original_CDS'].to_dict()
             raw_sdr_old_map = df.set_index('Match_ID')['Original_SDR'].to_dict()
@@ -560,16 +560,18 @@ if uploaded_files:
                 if today_f > 0 or new_f > 0:
                     chart_data_comparison.append({
                         "Station": stn.title(),
+                        # SMART FIX: If today's fare is 0, store it as None so the graph skips it
                         "Old Fare (£)": today_f if today_f > 0 else None,
                         "New Fare (£)": new_f,
                         "Old Super Off-Peak (£)": sop_f if sop_f > 0 else None,
+                        # If there was no historical fare, variance is blank/None instead of misleading
                         "Change (£)": round(new_f - today_f, 2) if today_f > 0 else None
                     })
 
-           # 🟢 ----GET READY FOR TABS, TAELIN----
-            tab1, tab2 = st.tabs(["📊 Dashboard Analytics", "🎫 Ticket Changes"])
+           # 🟢 INITIALIZE TABS FOR DASHBOARD SEGREGATION
+            tab1, tab2 = st.tabs(["📊 Hub Analytics", "🔍 Market Opportunities"])
 
-            # 🟢 TAB 1 CONTENTS (Graphs and biggest Journey/Revenue changes)
+            # 🟢 START OF TAB 1 CONTENTS (Analytics & Top 10 Tables)
             with tab1:
                 gc1, gc2 = st.columns(2)
                 
@@ -578,7 +580,7 @@ if uploaded_files:
                         df_splits = pd.DataFrame(chart_data_splits)
                         fig_splits = go.Figure()
                         
-                        # Track 1: Pure Splits (e.g., 7DS + 7DS or SDR + SDR). Change the term if Andrew/Team don't like it
+                        # Track 1: Pure Splits (e.g., 7DS + 7DS or SDR + SDR)
                         fig_splits.add_trace(go.Bar(
                             x=df_splits["Intermediate Station"], y=df_splits["Pure Split"],
                             name=f"Pure Split ({chosen_ticket} + {chosen_ticket})", 
@@ -587,21 +589,21 @@ if uploaded_files:
                             hovertemplate="<b>Split Station: %{x}</b><br>Total Split Cost: £%{y:.2f}<br>Leg 1 ("+chosen_ticket+"): £%{customdata[0]:.2f}<br>Leg 2 ("+chosen_ticket+"): £%{customdata[1]:.2f}<extra></extra>"
                         ))
                         
-                        # Product-mixing. Only for Standard Day fares.
+                        # Only add Mixed Product combos if dealing with walk-up tickers (skip season passes)
                         if chosen_ticket != "7DS" and chosen_ticket != alt_product:
-                            # Track 2: Product Mix A
+                            # Track 2: Product Mixture Combo A
                             fig_splits.add_trace(go.Bar(
                                 x=df_splits["Intermediate Station"], y=df_splits["Mix A"],
-                                name=f"Product Mix A ({chosen_ticket} + {alt_product})", 
+                                name=f"Mixed Combo A ({chosen_ticket} + {alt_product})", 
                                 marker_color='rgb(26, 118, 141)',
                                 customdata=df_splits[["Mix A L1", "Mix A L2"]],
                                 hovertemplate="<b>Split Station: %{x}</b><br>Total Split Cost: £%{y:.2f}<br>Leg 1 ("+chosen_ticket+"): £%{customdata[0]:.2f}<br>Leg 2 ("+alt_product+"): £%{customdata[1]:.2f}<extra></extra>"
                             ))
                             
-                            # Track 3: Product Mix B
+                            # Track 3: Product Mixture Combo B
                             fig_splits.add_trace(go.Bar(
                                 x=df_splits["Intermediate Station"], y=df_splits["Mix B"],
-                                name=f"Product Mix B ({alt_product} + {chosen_ticket})", 
+                                name=f"Mixed Combo B ({alt_product} + {chosen_ticket})", 
                                 marker_color='rgb(158, 201, 225)',
                                 customdata=df_splits[["Mix B L1", "Mix B L2"]],
                                 hovertemplate="<b>Split Station: %{x}</b><br>Total Split Cost: £%{y:.2f}<br>Leg 1 ("+alt_product+"): £%{customdata[1]:.2f}<br>Leg 2 ("+chosen_ticket+"): £%{customdata[1]:.2f}<extra></extra>"
@@ -633,14 +635,14 @@ if uploaded_files:
                     if chart_data_comparison:
                         df_comp = pd.DataFrame(chart_data_comparison)
                         
-                        # Last-minute addtion 1: Pre-formatted string with the sign on the outside of the symbol
+                        # 1. NEW STRIP: Build a pre-formatted string with the sign on the outside of the symbol
                         df_comp["Variance_Text"] = df_comp["Change (£)"].apply(
                             lambda x: f"+£{x:.2f}" if x > 0 else f"-£{abs(x):.2f}" if x < 0 else "£0.00" if pd.notna(x) else ""
                         )
                         
                         fig_comp = go.Figure()
                         
-                        # Last-minute addtion 2: Only plot the blue line if there is at least one non-zero historical fare on this route segment. Risky move. Might change later.
+                        # SMART FIX: Only plot the blue line if there is at least one non-zero historical fare on this route segment
                         if df_comp["Old Fare (£)"].notna().any():
                             fig_comp.add_trace(go.Scatter(
                                 x=df_comp["Station"], y=df_comp["Old Fare (£)"], mode="lines+markers",
@@ -657,7 +659,7 @@ if uploaded_files:
                                 hovertemplate="<b>To: %{x}</b><br>Withdrawn SOP Fare: £%{y:.2f}<extra></extra>"
                             ))
                         
-                        # Red Line: New Oval Fares
+                        # Red Line: New Optimized Fares
                         fig_comp.add_trace(go.Scatter(
                             x=df_comp["Station"], y=df_comp["New Fare (£)"], mode="lines+markers",
                             name=f"New Optimized {chosen_ticket}", line=dict(color="#d62728", width=3), marker=dict(size=8),
@@ -666,8 +668,8 @@ if uploaded_files:
                         ))
                         
                         fig_comp.update_layout(
-                            title=f"{chosen_ticket} Fares Outward from {start_stn.title()}",
-                            xaxis_title="Line of Route Destinations", yaxis_title="Fare Price (£)",
+                            title=f"{chosen_ticket} Progression Outward from {start_stn.title()}",
+                            xaxis_title="Destination Milestone Stops", yaxis_title="Fare Price (£)",
                             template="plotly_white", 
                             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                             hovermode="x unified"
@@ -676,7 +678,7 @@ if uploaded_files:
                     else:
                         st.info("No historical comparison data rows found for this selection.")
 
-            # 🟢 TAB 2 CONTENTS (Top 10 Tables & Ticket Changes)
+            # 🟢 START OF TAB 2 CONTENTS (Market Opportunities & Top 10 Tables)
             with tab2:
                 
                 # =========================================================================
@@ -739,7 +741,7 @@ if uploaded_files:
                                     if thru > s_sum + 0.01: split_before += 1
         
                     split_after = len(gaps)
-                    st.markdown(f"**Split-ticket opportunities resolved:** {split_before - split_after}<br>**Remaining:** {split_after}", unsafe_allow_html=True)
+                    st.markdown(f"**Split-ticket opportunities solved:** {split_before - split_after}<br>**Remaining:** {split_after}", unsafe_allow_html=True)
                     
                 with r2c4:
                     st.subheader("Remaining Long-Buying Opportunities")
@@ -776,17 +778,17 @@ if uploaded_files:
                                     if id_sn in base_prices and id_sf in base_prices:
                                         if base_prices[id_sn] > base_prices[id_sf] + 0.01: lb_before += 1
                     lb_after = len(lb_gaps)
-                    st.markdown(f"**Long-buying opportunities resolved:** {lb_before - lb_after}<br>**Remaining:** {lb_after}", unsafe_allow_html=True)
+                    st.markdown(f"**Long-buying opportunities solved:** {lb_before - lb_after}<br>**Remaining:** {lb_after}", unsafe_allow_html=True)
 
-        # 🟢 End of tabs
+        # 🟢 FALL BACK OUT OF TABS STRUCTURE FOR MAIN SUMMARY BASE
         # --- ROW 3: JOURNEY & REVENUE IMPACT TABLES ---
         st.divider()
         r3c1, r3c2 = st.columns(2)
         with r3c1:
-            st.subheader("Biggest Passenger Impacts")
-            st.caption(f"Flows with price changes affecting the highest volume of **{chosen_ticket}** journeys")
+            st.subheader("Biggest Journey Volume Changes")
+            st.caption(f"Flows with price steps affecting highest volume of **{chosen_ticket}** journeys")
             
-            # Passenger impacts table, might expand list
+            # Slice and make a copy to add our cleanly formatted text column
             journey_changes = df[df['Diff'].abs() > 0.01].sort_values('Filtered_Journeys', ascending=False).head(10).copy()
             journey_changes['Price_Change_Text'] = journey_changes['Diff'].apply(
                 lambda x: f"+£{x:.2f}" if x > 0 else f"-£{abs(x):.2f}" if x < 0 else "£0.00" if pd.notna(x) else ""
@@ -806,14 +808,14 @@ if uploaded_files:
             total_new_journeys = df['Predicted_Journeys'].sum()
             journey_delta = total_new_journeys - total_prev_journeys
             
-            m1.metric(label=f"Current {chosen_ticket} Journeys", value=f"{total_prev_journeys:,.0f}")
-            m2.metric(label=f"Estimated {chosen_ticket} Journeys", value=f"{total_new_journeys:,.0f}", delta=f"{journey_delta:+,.0f}")
+            m1.metric(label=f"Previous {chosen_ticket} Journeys", value=f"{total_prev_journeys:,.0f}")
+            m2.metric(label=f"New Predicted {chosen_ticket} Journeys", value=f"{total_new_journeys:,.0f}", delta=f"{journey_delta:+,.0f}")
                          
         with r3c2:
-            st.subheader("Biggest Revenue Impacts")
-            st.caption(f"Flows with the largest financial variance ({chosen_ticket} only)")
+            st.subheader("Biggest Financial Revenue Impacts")
+            st.caption(f"Flows with the largest currency variance ({chosen_ticket} Segment Volume × Delta)")
             
-            # Revenue impacts table, might expand list
+            # Slice and make a copy to add clean currency text columns
             revenue_changes = df.sort_values('Abs_Revenue_Impact', ascending=False).head(10).copy()
             revenue_changes['Price_Change_Text'] = revenue_changes['Diff'].apply(
                 lambda x: f"+£{x:.2f}" if x > 0 else f"-£{abs(x):.2f}" if x < 0 else "£0.00" if pd.notna(x) else ""
@@ -835,14 +837,14 @@ if uploaded_files:
             total_new_rev = df['New_Ticket_Revenue'].sum()
             revenue_delta = total_new_rev - total_prev_rev
             
-            # Pre-format the £ to put the "-" sign on on the outside
+            # Pre-format the delta metric to keep the minus sign cleanly on the outside
             revenue_delta_str = f"+£{revenue_delta:,.0f}" if revenue_delta > 0 else f"-£{abs(revenue_delta):,.0f}" if revenue_delta < 0 else "£0"
             
-            m3.metric(label=f"Current {chosen_ticket} Revenue", value=f"£{total_prev_rev:,.0f}")
-            m4.metric(label=f"Estimated {chosen_ticket} Revenue", value=f"£{total_new_rev:,.0f}", delta=revenue_delta_str)
+            m3.metric(label=f"Previous {chosen_ticket} Yield", value=f"£{total_prev_rev:,.0f}")
+            m4.metric(label=f"New Predicted {chosen_ticket} Yield", value=f"£{total_new_rev:,.0f}", delta=revenue_delta_str)
 
         st.divider()
-        st.subheader("Full Fare Summary")
+        st.subheader("Full Context Fare Summary")
         
         output_df = df[['Origin Description', 'Destination Description', 'Original_SDR', 'New_SDR', 'Display_Original_Fare', 'Display_New_Fare', 'Status']].copy()
         st.dataframe(output_df, column_config={
@@ -852,6 +854,6 @@ if uploaded_files:
             "Display_New_Fare": st.column_config.NumberColumn(f"New {chosen_ticket}", format="£%.2f")
         }, use_container_width=True, hide_index=True)
             
-        st.download_button("Download New Fares", convert_df_to_csv(df), "New_Oval_Fares.csv", "text/csv")
+        st.download_button("Download Configured Fares", convert_df_to_csv(df), "Optimised_Network_Fares.csv", "text/csv")
 else:
-    st.info("Please upload fare spreadsheets in the sidebar.")
+    st.info("Please upload fare spreadsheets in the sidebar to populate the dynamic optimization model dashboard.")
