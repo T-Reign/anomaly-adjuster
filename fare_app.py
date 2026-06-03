@@ -84,15 +84,15 @@ def process_data(uploaded_files, slp_enabled, sdr_rounding, inc_cap, dec_cap,
     all_dfs = []
     all_jr_dfs = []
         
-        for f in uploaded_files:
-            df_main = pd.read_excel(f, sheet_name='Main Sheet', header=1)
-            all_dfs.append(df_main)
+    for f in uploaded_files:
+        df_main = pd.read_excel(f, sheet_name='Main Sheet', header=1)
+        all_dfs.append(df_main)
             
-            try:
-                df_jr_raw = pd.read_excel(f, sheet_name='Journeys and Revenue')
-                all_jr_dfs.append(df_jr_raw)
-            except Exception as e:
-                st.error(f"Could not find 'Journeys and Revenue' sheet in {f.name}. Please ensure the sheet name matches exactly.")
+        try:
+            df_jr_raw = pd.read_excel(f, sheet_name='Journeys and Revenue')
+            all_jr_dfs.append(df_jr_raw)
+        except Exception as e:
+            st.error(f"Could not find 'Journeys and Revenue' sheet in {f.name}. Please ensure the sheet name matches exactly.")
 
         df = pd.concat(all_dfs, ignore_index=True)
         df.columns = [str(c).strip() for c in df.columns]
