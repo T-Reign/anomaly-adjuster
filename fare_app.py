@@ -563,7 +563,7 @@ if uploaded_files:
                         "Old Fare (£)": today_f if today_f > 0 else None,
                         "New Fare (£)": new_f,
                         "Old Super Off-Peak (£)": sop_f if sop_f > 0 else None,
-                        "Change (£)": round(new_f - today_f, 2) if today_f > 0 else None
+                        "Change (£)": round(new_f - today_f, 2) if today_f > 0 else float('nan')
                     })
 
            # 🟢 ----GET READY FOR TABS, TAELIN----
