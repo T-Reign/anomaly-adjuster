@@ -853,7 +853,7 @@ if uploaded_files:
             
             st.dataframe(revenue_changes[['Origin Description', 'Destination Description', 'Filtered_Journeys', 'Price_Change_Text', 'Revenue_Impact_Text']], 
                          column_config={
-                             "Filtered_Journeys": st.column_config.NumberColumn("Ticket Volume", format="%,d"), 
+                             "Filtered_Journeys": st.column_config.NumberColumn("Journeys", format="%,d"), 
                              "Price_Change_Text": st.column_config.TextColumn("Price Change"), 
                              "Revenue_Impact_Text": st.column_config.TextColumn("Revenue Impact")
                          }, use_container_width=True, hide_index=True)
