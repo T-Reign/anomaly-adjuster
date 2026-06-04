@@ -749,7 +749,6 @@ if uploaded_files:
                                             "Split At": str(n_map.get(B, B)).title(), 
                                             "New Fare": thru, "Split Fare": s_sum, "Difference": round(thru - s_sum, 2)
                                         })
-                    # ... (Rest of your original split table code remains the same)
                     if gaps:
                         st.dataframe(pd.DataFrame(gaps).sort_values('Difference', ascending=False).head(300), 
                                      column_config={"New Fare": st.column_config.NumberColumn(format="£%.2f"), "Split Fare": st.column_config.NumberColumn(format="£%.2f"), "Difference": st.column_config.NumberColumn(format="£%.2f")},
