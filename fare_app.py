@@ -664,7 +664,7 @@ if uploaded_files:
                         if df_comp["Old Fare (£)"].notna().any():
                             fig_comp.add_trace(go.Scatter(
                                 x=df_comp["Station"], y=df_comp["Old Fare (£)"], mode="lines+markers",
-                                name="Current Fare", line=dict(color="#1f77b4", width=3), marker=dict(size=8),
+                                name="Current Fare", line=dict(color="#e0f2fe", width=3), marker=dict(size=8),
                                 connectgaps=True, # If a random station in the middle is 0, it neatly connects the rest
                                 hovertemplate="<b>To: %{x}</b><br>Current Fare: £%{y:.2f}<extra></extra>"
                             ))
